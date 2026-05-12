@@ -1,0 +1,28 @@
+{
+  "name": "practice-ecommerce-backend",
+  "version": "1.0.0",
+  "description": "Versioned Express backend for the practice e-commerce project",
+  "main": "server.js",
+  "scripts": {
+    "dev": "nodemon server.js",
+    "start": "node server.js"
+  },
+  "keywords": [
+    "express",
+    "mongoose",
+    "api",
+    "ecommerce"
+  ],
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^5.2.1",
+    "mongodb": "^7.2.0",
+    "mongoose": "^8.19.3",
+    "morgan": "^1.10.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  }
+}
