@@ -1,16 +1,16 @@
-const path = require("path");
-const dotenv = require("dotenv");
 const express = require("express");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
+const dotenv = require("dotenv");
 const morgan = require("morgan");
-
-dotenv.config({ path: path.join(__dirname, ".env") });
+const app = express();
+dotenv.config();
 
 const connectDB = require("./src/config/db");
-const v1Routes = require("./src/routes/v1");
+const Routes = require("./src/routes/index.js");
 const { notFound, errorHandler } = require("./src/middleware/error.middleware");
 
-const app = express();
+
 const PORT = Number(process.env.PORT);
 
 const startServer = async () => {
@@ -23,6 +23,7 @@ const startServer = async () => {
       })
     );
     app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+    app.use(cookieParser());
     app.use(express.json());
     app.use(express.urlencoded({ extended: true }));
 
@@ -33,7 +34,7 @@ const startServer = async () => {
       });
     });
 
-    app.use("/api/v1", v1Routes);
+    app.use("/api", Routes);
 
     app.use(notFound);
     app.use(errorHandler);
