@@ -56,8 +56,20 @@ const authorizeRoles = (...allowedRoles) => {
 
 const adminOnly = authorizeRoles("admin");
 
+const admin = (req, res, next) => {
+  if (req.user?.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "Admin access only",
+    });
+  }
+
+  next();
+};
+
 module.exports = {
   protect,
+  admin,
   authorizeRoles,
   adminOnly,
 };
