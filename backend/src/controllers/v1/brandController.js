@@ -1,15 +1,6 @@
-const mongoose = require("mongoose");
 const slugify = require("slugify");
 
 const Brand = require("../../models/Brand");
-
-const normalizeText = (value) => {
-  return typeof value === "string" ? value.trim() : value;
-};
-
-const isValidBrandId = (id) => {
-  return mongoose.Types.ObjectId.isValid(id);
-};
 
 const createSlug = (name) => {
   return slugify(name, {
@@ -19,239 +10,165 @@ const createSlug = (name) => {
   });
 };
 
+const sendSuccess = (res, statusCode, message, data) => {
+  return res.status(statusCode).json({
+    success: true,
+    message,
+    data,
+  });
+};
+
+const sendError = (res, statusCode, message) => {
+  return res.status(statusCode).json({
+    success: false,
+    message,
+  });
+};
+
+const handleBrandError = (error, res, next) => {
+  if (error.code === 11000) {
+    return sendError(res, 400, "Brand already exists");
+  }
+
+  error.statusCode = error.statusCode || 500;
+  return next(error);
+};
+
 const getBrands = async (req, res, next) => {
   try {
-    const brands = await Brand.find().sort({ createdAt: -1 });
+    const filter =
+      req.user?.role === "admin"
+        ? { isDeleted: { $ne: true } }
+        : { isActive: true, isDeleted: { $ne: true } };
+    const brands = await Brand.find(filter).sort({ createdAt: -1 });
 
-    return res.status(200).json({
-      success: true,
-      brands,
-    });
+    return sendSuccess(res, 200, "Brands fetched successfully", { brands });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    next(error);
+    return handleBrandError(error, res, next);
   }
 };
 
 const createBrand = async (req, res, next) => {
   try {
-    const { name, animalName, image } = req.body;
-    const cleanName = normalizeText(name);
-    const cleanAnimalName = normalizeText(animalName);
-    const cleanImage = normalizeText(image);
+    const { name, animalNames, image } = req.validatedBrand;
 
-    if (!cleanName || !cleanAnimalName || !cleanImage) {
-      return res.status(400).json({
-        success: false,
-        message: "Name, animal name, and image are required",
-      });
-    }
-
-    const slug = createSlug(cleanName);
+    const slug = createSlug(name);
 
     if (!slug) {
-      return res.status(400).json({
-        success: false,
-        message: "Name must contain letters or numbers",
-      });
+      return sendError(res, 400, "Name must contain letters or numbers");
     }
 
-    const existingBrand = await Brand.findOne({ slug });
+    const existingBrand = await Brand.findOne({
+      slug,
+    });
 
     if (existingBrand) {
-      return res.status(400).json({
-        success: false,
-        message: "Brand already exists",
-      });
+      return sendError(res, 400, "Brand already exists");
     }
 
     const brand = await Brand.create({
-      name: cleanName,
+      name,
       slug,
-      animalName: cleanAnimalName,
-      image: cleanImage,
+      animalNames,
+      image,
     });
 
-    return res.status(201).json({
-      success: true,
-      message: "Brand created successfully",
-      brand,
-    });
+    return sendSuccess(res, 201, "Brand created successfully", { brand });
   } catch (error) {
-    if (error.code === 11000) {
-      return res.status(400).json({
-        success: false,
-        message: "Brand already exists",
-      });
-    }
-
-    error.statusCode = error.statusCode || 500;
-    next(error);
+    return handleBrandError(error, res, next);
   }
 };
 
 const updateBrand = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const { name, animalName, image } = req.body;
-    const cleanName = normalizeText(name);
-    const cleanAnimalName = normalizeText(animalName);
-    const cleanImage = normalizeText(image);
+    const { name, animalNames, image } = req.validatedBrand;
 
-    if (!isValidBrandId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid brand id",
-      });
-    }
-
-    const brand = await Brand.findById(id);
+    const brand = await Brand.findOne(req.brandQuery);
 
     if (!brand) {
-      return res.status(404).json({
-        success: false,
-        message: "Brand not found",
-      });
+      return sendError(res, 404, "Brand not found");
     }
 
-    if (cleanName !== undefined) {
-      if (!cleanName) {
-        return res.status(400).json({
-          success: false,
-          message: "Name cannot be empty",
-        });
-      }
-    }
+    const updateData = {};
 
-    if (cleanAnimalName !== undefined && !cleanAnimalName) {
-      return res.status(400).json({
-        success: false,
-        message: "Animal name cannot be empty",
-      });
-    }
-
-    if (cleanImage !== undefined && !cleanImage) {
-      return res.status(400).json({
-        success: false,
-        message: "Image cannot be empty",
-      });
-    }
-
-    if (cleanName && cleanName !== brand.name) {
-      const slug = createSlug(cleanName);
+    if (name && name !== brand.name) {
+      const slug = createSlug(name);
 
       if (!slug) {
-        return res.status(400).json({
-          success: false,
-          message: "Name must contain letters or numbers",
-        });
+        return sendError(res, 400, "Name must contain letters or numbers");
       }
 
       const existingBrand = await Brand.findOne({
         slug,
-        _id: { $ne: id },
+        _id: { $ne: brand._id },
       });
 
       if (existingBrand) {
-        return res.status(400).json({
-          success: false,
-          message: "Brand already exists",
-        });
+        return sendError(res, 400, "Brand already exists");
       }
 
-      brand.name = cleanName;
-      brand.slug = slug;
+      updateData.name = name;
+      updateData.slug = slug;
     }
 
-    if (cleanAnimalName !== undefined) {
-      brand.animalName = cleanAnimalName;
+    if (animalNames !== undefined) {
+      updateData.animalNames = animalNames;
     }
 
-    if (cleanImage !== undefined) {
-      brand.image = cleanImage;
+    if (image !== undefined) {
+      updateData.image = image;
     }
 
+    brand.set(updateData);
     await brand.save();
 
-    return res.status(200).json({
-      success: true,
-      message: "Brand updated successfully",
-      brand,
-    });
+    return sendSuccess(res, 200, "Brand updated successfully", { brand });
   } catch (error) {
-    if (error.code === 11000) {
-      return res.status(400).json({
-        success: false,
-        message: "Brand already exists",
-      });
-    }
-
-    error.statusCode = error.statusCode || 500;
-    next(error);
+    return handleBrandError(error, res, next);
   }
 };
 
-const deleteBrand = async (req, res, next) => {
+const softDeleteBrand = async (req, res, next) => {
   try {
-    const { id } = req.params;
-
-    if (!isValidBrandId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid brand id",
-      });
-    }
-
-    const brand = await Brand.findByIdAndDelete(id);
+    const brand = await Brand.findOne(req.brandQuery);
 
     if (!brand) {
-      return res.status(404).json({
-        success: false,
-        message: "Brand not found",
-      });
+      return sendError(res, 404, "Brand not found");
     }
 
-    return res.status(200).json({
-      success: true,
-      message: "Brand deleted successfully",
+    brand.set({
+      isDeleted: true,
+      isActive: false,
     });
+    await brand.save();
+
+    return sendSuccess(res, 200, "Brand deleted successfully", { brand });
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    next(error);
+    return handleBrandError(error, res, next);
   }
 };
 
-const toggleBrandStatus = async (req, res, next) => {
+const updateBrandStatus = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const { isActive } = req.validatedBrandStatus;
 
-    if (!isValidBrandId(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid brand id",
-      });
-    }
-
-    const brand = await Brand.findById(id);
+    const brand = await Brand.findOne(req.brandQuery);
 
     if (!brand) {
-      return res.status(404).json({
-        success: false,
-        message: "Brand not found",
-      });
+      return sendError(res, 404, "Brand not found");
     }
 
-    brand.isActive = !brand.isActive;
+    brand.set({ isActive });
     await brand.save();
 
-    return res.status(200).json({
-      success: true,
-      message: "Brand status updated successfully",
-      brand,
-    });
+    return sendSuccess(
+      res,
+      200,
+      `Brand ${isActive ? "activated" : "deactivated"} successfully`,
+      { brand }
+    );
   } catch (error) {
-    error.statusCode = error.statusCode || 500;
-    next(error);
+    return handleBrandError(error, res, next);
   }
 };
 
@@ -259,6 +176,6 @@ module.exports = {
   getBrands,
   createBrand,
   updateBrand,
-  deleteBrand,
-  toggleBrandStatus,
+  softDeleteBrand,
+  updateBrandStatus,
 };
