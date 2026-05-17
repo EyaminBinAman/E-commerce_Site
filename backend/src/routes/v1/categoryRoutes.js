@@ -2,48 +2,33 @@ const express = require("express");
 const router = express.Router();
 
 const { protect, adminOnly } = require("../../middleware/auth.middleware.js");
-const { createImageUpload } = require("../../utils/upload.js");
 
 const {
   getCategories,
-  postCategory,
-  updateCategory,
-  deleteCategory,
-  toggleCategoryActive,
+  createCategory,
+  updateCategoryBySlug,
+  deleteCategoryBySlug,
+  toggleCategoryActiveBySlug,
 } = require("../../controllers/v1/categoryController.js");
 
-const categoryImageUpload = createImageUpload({
-  folder: "categories",
-  maxSizeKB: 500,
-});
-
-// Public + user + admin
+// Public
 router.get("/get-categories", getCategories);
 
 // Admin only
-router.post(
-  "/post-category",
-  protect,
-  adminOnly,
-  categoryImageUpload.single("image"),
-  postCategory
-);
-
+router.post("/create-category", 
+  protect, adminOnly, 
+  createCategory);
+router.patch("/update-category/:slug", 
+  protect, adminOnly, 
+  updateCategoryBySlug);
+router.delete("/delete-category/:slug",
+  protect, adminOnly, 
+  deleteCategoryBySlug);
 router.patch(
-  "/update-category/:id",
+  "/active-on-off-animals/:slug",
   protect,
   adminOnly,
-  categoryImageUpload.single("image"),
-  updateCategory
-);
-
-router.delete("/delete-category/:id", protect, adminOnly, deleteCategory);
-
-router.patch(
-  "/active-on-off-animals/:id",
-  protect,
-  adminOnly,
-  toggleCategoryActive
+  toggleCategoryActiveBySlug
 );
 
 module.exports = router;

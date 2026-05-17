@@ -1,4 +1,3 @@
-const mongoose = require("mongoose");
 const Category = require("../../models/Category");
 
 // GET /get-categories
@@ -26,10 +25,10 @@ const getCategories = async (req, res, next) => {
   }
 };
 
-// POST /post-category
-const postCategory = async (req, res, next) => {
+// POST /create-category
+const createCategory = async (req, res, next) => {
   try {
-    const { name, animalName } = req.body;
+    const { name, animalName, image } = req.body;
 
     if (!name || !animalName) {
       return res.status(400).json({
@@ -56,9 +55,7 @@ const postCategory = async (req, res, next) => {
     const category = await Category.create({
       name,
       animalName,
-      image: req.file
-        ? `/uploads/categories/${req.file.filename}`
-        : null,
+      image: image || null,
     });
 
     return res.status(201).json({
@@ -71,21 +68,12 @@ const postCategory = async (req, res, next) => {
   }
 };
 
-// PATCH /update-category/:id
-const updateCategory = async (req, res, next) => {
+// PATCH /update-category/:slug
+const updateCategoryBySlug = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    const { name, animalName } = req.body;
-
-    // Validate MongoDB ID
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid category id",
-      });
-    }
-
-    const category = await Category.findById(id);
+    const { slug } = req.params;
+    const { name, animalName, image } = req.body;
+    const category = await Category.findOne({ slug });
 
     if (!category) {
       return res.status(404).json({
@@ -101,7 +89,7 @@ const updateCategory = async (req, res, next) => {
           $regex: `^${name.trim()}$`,
           $options: "i",
         },
-        _id: { $ne: id },
+        _id: { $ne: category._id },
       });
 
       if (existingCategory) {
@@ -118,8 +106,8 @@ const updateCategory = async (req, res, next) => {
       category.animalName = animalName;
     }
 
-    if (req.file) {
-      category.image = `/uploads/categories/${req.file.filename}`;
+    if (typeof image === "string") {
+      category.image = image.trim() || null;
     }
 
     // save() triggers slug middleware
@@ -135,20 +123,11 @@ const updateCategory = async (req, res, next) => {
   }
 };
 
-// DELETE /delete-category/:id
-const deleteCategory = async (req, res, next) => {
+// DELETE /delete-category/:slug
+const deleteCategoryBySlug = async (req, res, next) => {
   try {
-    const { id } = req.params;
-
-    // Validate MongoDB ID
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid category id",
-      });
-    }
-
-    const category = await Category.findByIdAndDelete(id);
+    const { slug } = req.params;
+    const category = await Category.findOneAndDelete({ slug });
 
     if (!category) {
       return res.status(404).json({
@@ -166,19 +145,11 @@ const deleteCategory = async (req, res, next) => {
   }
 };
 
-// PATCH /toggle-category-status/:id
-const toggleCategoryActive = async (req, res, next) => {
+// PATCH /active-on-off-animals/:slug
+const toggleCategoryActiveBySlug = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const { slug } = req.params;
     const { isActive } = req.body;
-
-    // Validate MongoDB ID
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid category id",
-      });
-    }
 
     if (typeof isActive !== "boolean") {
       return res.status(400).json({
@@ -187,7 +158,7 @@ const toggleCategoryActive = async (req, res, next) => {
       });
     }
 
-    const category = await Category.findById(id);
+    const category = await Category.findOne({ slug });
 
     if (!category) {
       return res.status(404).json({
@@ -214,8 +185,8 @@ const toggleCategoryActive = async (req, res, next) => {
 
 module.exports = {
   getCategories,
-  postCategory,
-  updateCategory,
-  deleteCategory,
-  toggleCategoryActive,
+  createCategory,
+  updateCategoryBySlug,
+  deleteCategoryBySlug,
+  toggleCategoryActiveBySlug,
 };
