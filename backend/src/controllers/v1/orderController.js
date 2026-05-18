@@ -92,11 +92,27 @@ const getVariantName = (variant) => {
   return getFirstValue(variant?.name, variant?.title, variant?.variantName)?.toString() || null;
 };
 
+const getVariantAdjustedPrice = (product, variant) => {
+  if (!variant) {
+    return null;
+  }
+
+  const basePrice = getFirstNumber(product.price, product.unitPrice, product.basePrice);
+  const priceAdjustment = getFirstNumber(variant.priceAdjustment, 0);
+
+  if (basePrice === null || priceAdjustment === null) {
+    return null;
+  }
+
+  return basePrice + priceAdjustment;
+};
+
 const getPricingSnapshot = (product, variant) => {
   const unitPrice = getFirstNumber(
     variant?.price,
     variant?.unitPrice,
     variant?.basePrice,
+    getVariantAdjustedPrice(product, variant),
     product.price,
     product.unitPrice,
     product.basePrice,
@@ -120,13 +136,35 @@ const getPricingSnapshot = (product, variant) => {
 };
 
 const getStock = (product, variant) => {
-  return getFirstNumber(variant?.stock, variant?.quantity, product.stock, product.quantity);
+  return getFirstNumber(
+    variant?.stock,
+    variant?.quantity,
+    variant?.stockQuantity,
+    product.stock,
+    product.quantity,
+    product.stockQuantity
+  );
 };
 
 const getWeight = (product, variant) => {
   const weight = getFirstValue(variant?.weight, product.weight);
 
   return weight === undefined || weight === null ? null : weight;
+};
+
+const getStockKey = (item) => {
+  return item.variantId ? `${item.productId}:${item.variantId}` : item.productId;
+};
+
+const getRequestedQuantityMap = (items) => {
+  return items.reduce((quantityMap, item) => {
+    const stockKey = getStockKey(item);
+    const currentQuantity = quantityMap.get(stockKey) || 0;
+
+    quantityMap.set(stockKey, currentQuantity + item.quantity);
+
+    return quantityMap;
+  }, new Map());
 };
 
 const generateOrderNumber = async () => {
@@ -172,6 +210,7 @@ const createOrder = async (req, res, next) => {
     );
     const orderItems = [];
     const warnings = [];
+    const requestedQuantityMap = getRequestedQuantityMap(items);
 
     for (const item of items) {
       const product = productsById.get(item.productId);
@@ -186,9 +225,13 @@ const createOrder = async (req, res, next) => {
         return sendError(res, 404, "Product variant not found");
       }
 
+      if (variant?.isActive === false) {
+        return sendError(res, 400, "Product variant is not active");
+      }
+
       const stock = getStock(product, variant);
 
-      if (stock !== null && stock < item.quantity) {
+      if (stock !== null && stock < requestedQuantityMap.get(getStockKey(item))) {
         return sendError(res, 400, "Insufficient product stock");
       }
 
@@ -317,52 +360,22 @@ const updateOrder = async (req, res, next) => {
       return sendError(res, 404, "Order not found");
     }
 
-    order.set(req.validatedOrder);
+    const { shippingAddress, ...updateData } = req.validatedOrder;
+
+    order.set(updateData);
+
+    if (shippingAddress) {
+      order.set({
+        shippingAddress: {
+          ...order.shippingAddress?.toObject(),
+          ...shippingAddress,
+        },
+      });
+    }
+
     await order.save();
 
     return sendSuccess(res, 200, "Order updated successfully", { order });
-  } catch (error) {
-    return next(error);
-  }
-};
-
-const updateOrderStatus = async (req, res, next) => {
-  try {
-    if (!isAdmin(req.user)) {
-      return sendError(res, 403, "Admin access only");
-    }
-
-    const order = await Order.findById(req.orderId);
-
-    if (!order) {
-      return sendError(res, 404, "Order not found");
-    }
-
-    order.set(req.validatedStatus);
-    await order.save();
-
-    return sendSuccess(res, 200, "Order status updated successfully", { order });
-  } catch (error) {
-    return next(error);
-  }
-};
-
-const updatePaymentStatus = async (req, res, next) => {
-  try {
-    if (!isAdmin(req.user)) {
-      return sendError(res, 403, "Admin access only");
-    }
-
-    const order = await Order.findById(req.orderId);
-
-    if (!order) {
-      return sendError(res, 404, "Order not found");
-    }
-
-    order.set(req.validatedStatus);
-    await order.save();
-
-    return sendSuccess(res, 200, "Payment status updated successfully", { order });
   } catch (error) {
     return next(error);
   }
@@ -431,8 +444,6 @@ module.exports = {
   getMyOrders,
   getSingleOrder,
   updateOrder,
-  updateOrderStatus,
-  updatePaymentStatus,
   refundOrder,
   softDeleteOrder,
 };

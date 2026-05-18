@@ -6,22 +6,20 @@ const {
   validateCreateOrder,
   validateOrderIdentifier,
   validateUpdateOrder,
-  validateUpdateOrderStatus,
-  validateUpdatePaymentStatus,
   validateRefundOrder,
 } = require("../../middleware/order.validation.middleware");
 const orderController = require("../../controllers/v1/orderController");
 
-router.post("/", protect, validateCreateOrder, orderController.createOrder);
+router.post("/create-order", protect, validateCreateOrder, orderController.createOrder);
 
 router.get("/my-orders", protect, orderController.getMyOrders);
 
-router.get("/:id", protect, validateOrderIdentifier, orderController.getSingleOrder);
+router.get("/get-order/:id", protect, validateOrderIdentifier, orderController.getSingleOrder);
 
-router.get("/", protect, admin, orderController.getOrders);
+router.get("/get-orders", protect, admin, orderController.getOrders);
 
 router.patch(
-  "/:id",
+  "/update-order/:id",
   protect,
   admin,
   validateOrderIdentifier,
@@ -30,25 +28,7 @@ router.patch(
 );
 
 router.patch(
-  "/:id/status",
-  protect,
-  admin,
-  validateOrderIdentifier,
-  validateUpdateOrderStatus,
-  orderController.updateOrderStatus
-);
-
-router.patch(
-  "/:id/payment-status",
-  protect,
-  admin,
-  validateOrderIdentifier,
-  validateUpdatePaymentStatus,
-  orderController.updatePaymentStatus
-);
-
-router.patch(
-  "/:id/refund",
+  "/refund-order/:id",
   protect,
   admin,
   validateOrderIdentifier,
@@ -57,7 +37,7 @@ router.patch(
 );
 
 router.delete(
-  "/:id",
+  "/delete-order/:id",
   protect,
   admin,
   validateOrderIdentifier,

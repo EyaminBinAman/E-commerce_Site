@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 
-<<<<<<< HEAD
 const normalizeAnimalName = (animalName) => {
   return typeof animalName === "string"
     ? animalName.trim().toLowerCase()
@@ -19,16 +18,6 @@ const isValidImageUrl = (image) => {
     return false;
   }
 };
-=======
-const slugify = (value = "") =>
-  value
-    .toString()
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
->>>>>>> origin/products_api
 
 const brandSchema = new mongoose.Schema(
   {
@@ -36,30 +25,17 @@ const brandSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
-<<<<<<< HEAD
-=======
-      minlength: 2,
-      maxlength: 80,
->>>>>>> origin/products_api
     },
     slug: {
       type: String,
       required: true,
-<<<<<<< HEAD
       trim: true,
       lowercase: true,
-=======
-      unique: true,
-      lowercase: true,
-      trim: true,
-      index: true,
->>>>>>> origin/products_api
     },
     isActive: {
       type: Boolean,
       default: true,
     },
-<<<<<<< HEAD
     isDeleted: {
       type: Boolean,
       default: false,
@@ -155,41 +131,4 @@ brandSchema.pre("deleteOne", { query: true, document: false }, preventHardDelete
 brandSchema.pre("deleteMany", preventHardDelete);
 brandSchema.pre("findOneAndDelete", preventHardDelete);
 
-=======
-  },
-  {
-    timestamps: true,
-  }
-);
-
-brandSchema.pre("validate", async function (next) {
-  try {
-    if (!this.name) return next();
-
-    if (!this.isNew && !this.isModified("name") && this.slug) {
-      return next();
-    }
-
-    const Brand = this.constructor;
-    const baseSlug = slugify(this.name) || "brand";
-    let candidate = baseSlug;
-    let counter = 1;
-
-    while (
-      await Brand.exists({
-        slug: candidate,
-        _id: { $ne: this._id },
-      })
-    ) {
-      candidate = `${baseSlug}-${counter++}`;
-    }
-
-    this.slug = candidate;
-    next();
-  } catch (error) {
-    next(error);
-  }
-});
-
->>>>>>> origin/products_api
 module.exports = mongoose.model("Brand", brandSchema);

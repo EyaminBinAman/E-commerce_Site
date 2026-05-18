@@ -9,40 +9,37 @@ const slugify = (value = "") =>
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-");
 
-const productVariantSchema = new mongoose.Schema(
-  {
-    name: {
-      type: String,
-      trim: true,
-      default: null,
-    },
-    value: {
-      type: String,
-      trim: true,
-      default: null,
-    },
-    sku: {
-      type: String,
-      trim: true,
-      default: null,
-    },
-    priceAdjustment: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    stockQuantity: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
+const productVariantSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    trim: true,
+    default: null,
   },
-  { _id: false }
-);
+  value: {
+    type: String,
+    trim: true,
+    default: null,
+  },
+  sku: {
+    type: String,
+    trim: true,
+    default: null,
+  },
+  priceAdjustment: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  stockQuantity: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
+});
 
 const productSchema = new mongoose.Schema(
   {

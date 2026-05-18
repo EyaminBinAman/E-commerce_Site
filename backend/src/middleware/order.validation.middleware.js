@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const PAYMENT_METHODS = ["COD", "BKASH", "NAGAD", "CARD", "SSL_COMMERZ"];
 const PAYMENT_STATUSES = ["Pending", "Paid", "Failed", "Refunded"];
+const DIRECT_UPDATE_PAYMENT_STATUSES = ["Pending", "Paid", "Failed"];
 const ORDER_STATUSES = [
   "Pending",
   "Confirmed",
@@ -13,7 +14,13 @@ const ORDER_STATUSES = [
 
 const CREATE_ORDER_FIELDS = ["items", "promoCode", "paymentMethod", "shippingAddress"];
 const CREATE_ORDER_ITEM_FIELDS = ["productId", "variantId", "quantity"];
-const UPDATE_ORDER_FIELDS = ["shippingAddress", "adminNote", "cancelledReason"];
+const UPDATE_ORDER_FIELDS = [
+  "shippingAddress",
+  "adminNote",
+  "cancelledReason",
+  "orderStatus",
+  "paymentStatus",
+];
 const REJECTED_CREATE_FIELDS = [
   "unitPrice",
   "discountedUnitPrice",
@@ -22,11 +29,24 @@ const REJECTED_CREATE_FIELDS = [
   "promoDiscount",
   "deliveryCharge",
   "grandTotal",
-  "paymentStatus",
-  "orderStatus",
   "productName",
   "image",
   "userInfo",
+];
+const REJECTED_UPDATE_FIELDS = [
+  "unitPrice",
+  "discountedUnitPrice",
+  "finalUnitPrice",
+  "subtotal",
+  "promoDiscount",
+  "deliveryCharge",
+  "grandTotal",
+  "productName",
+  "image",
+  "userInfo",
+  "items",
+  "paymentMethod",
+  "promoCode",
 ];
 
 const normalizeText = (value) => {
@@ -331,7 +351,7 @@ const validateUpdateOrder = (req, res, next) => {
     return fail(res, "Request body must be an object");
   }
 
-  const forbiddenField = findForbiddenField(req.body, REJECTED_CREATE_FIELDS);
+  const forbiddenField = findForbiddenField(req.body, REJECTED_UPDATE_FIELDS);
 
   if (forbiddenField) {
     return fail(res, `${forbiddenField} cannot be updated directly`);
@@ -343,9 +363,18 @@ const validateUpdateOrder = (req, res, next) => {
     return fail(res, `${unknownField} is not allowed when updating an order`);
   }
 
-  const { shippingAddress, adminNote, cancelledReason } = req.body;
+  const { shippingAddress, adminNote, cancelledReason, orderStatus, paymentStatus } =
+    req.body;
 
-  if (!hasAnyProvidedField([shippingAddress, adminNote, cancelledReason])) {
+  if (
+    !hasAnyProvidedField([
+      shippingAddress,
+      adminNote,
+      cancelledReason,
+      orderStatus,
+      paymentStatus,
+    ])
+  ) {
     return fail(res, "At least one field is required for update");
   }
 
@@ -386,35 +415,23 @@ const validateUpdateOrder = (req, res, next) => {
     validatedOrder.cancelledReason = cleanCancelledReason.value;
   }
 
+  if (isProvided(orderStatus)) {
+    if (!ORDER_STATUSES.includes(orderStatus)) {
+      return fail(res, "Invalid order status");
+    }
+
+    validatedOrder.orderStatus = orderStatus;
+  }
+
+  if (isProvided(paymentStatus)) {
+    if (!DIRECT_UPDATE_PAYMENT_STATUSES.includes(paymentStatus)) {
+      return fail(res, "Invalid payment status");
+    }
+
+    validatedOrder.paymentStatus = paymentStatus;
+  }
+
   req.validatedOrder = validatedOrder;
-  next();
-};
-
-const validateUpdateOrderStatus = (req, res, next) => {
-  const { orderStatus } = req.body;
-
-  if (!ORDER_STATUSES.includes(orderStatus)) {
-    return fail(res, "Invalid order status");
-  }
-
-  req.validatedStatus = {
-    orderStatus,
-  };
-
-  next();
-};
-
-const validateUpdatePaymentStatus = (req, res, next) => {
-  const { paymentStatus } = req.body;
-
-  if (!PAYMENT_STATUSES.includes(paymentStatus)) {
-    return fail(res, "Invalid payment status");
-  }
-
-  req.validatedStatus = {
-    paymentStatus,
-  };
-
   next();
 };
 
@@ -455,7 +472,5 @@ module.exports = {
   validateCreateOrder,
   validateOrderIdentifier,
   validateUpdateOrder,
-  validateUpdateOrderStatus,
-  validateUpdatePaymentStatus,
   validateRefundOrder,
 };
