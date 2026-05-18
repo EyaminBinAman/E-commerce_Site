@@ -84,7 +84,7 @@ const updateBrand = async (req, res, next) => {
     const { name, animalNames, image } = req.validatedBrand;
 
     const brand = await Brand.findOne(req.brandQuery);
-
+    console.log(req.brandQuery);
     if (!brand) {
       return sendError(res, 404, "Brand not found");
     }
