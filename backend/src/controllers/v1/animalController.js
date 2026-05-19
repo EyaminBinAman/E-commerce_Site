@@ -24,6 +24,7 @@ const createUniqueSlug = async (name, animalId = null) => {
     await Animal.exists({
       slug,
       ...(animalId ? { _id: { $ne: animalId } } : {}),
+      isDeleted: { $ne: true },
     })
   ) {
     slug = `${baseSlug}-${counter}`;
@@ -47,7 +48,7 @@ const isInvalidAnimalId = (id, res) => {
 
 const getAnimals = async (req, res, next) => {
   try {
-    const animals = await Animal.find().sort({ createdAt: -1 });
+    const animals = await Animal.find({ isActive: true }).sort({ createdAt: -1 });
 
     return res.status(200).json({
       success: true,
@@ -150,7 +151,7 @@ const deleteAnimal = async (req, res, next) => {
       return;
     }
 
-    const animal = await Animal.findByIdAndDelete(id);
+    const animal = await Animal.findById(id);
 
     if (!animal) {
       return res.status(404).json({
@@ -159,9 +160,14 @@ const deleteAnimal = async (req, res, next) => {
       });
     }
 
+    animal.isDeleted = true;
+    animal.isActive = false;
+    await animal.save();
+
     return res.status(200).json({
       success: true,
       message: "Animal deleted successfully",
+      animal,
     });
   } catch (error) {
     next(error);

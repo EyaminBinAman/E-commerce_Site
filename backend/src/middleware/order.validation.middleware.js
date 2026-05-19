@@ -1,7 +1,13 @@
 const mongoose = require("mongoose");
 
 const PAYMENT_METHODS = ["COD", "BKASH", "NAGAD", "CARD", "SSL_COMMERZ"];
-const PAYMENT_STATUSES = ["Pending", "Paid", "Failed", "Refunded"];
+const PAYMENT_STATUSES = [
+  "Pending",
+  "Paid",
+  "Failed",
+  "Partially Refunded",
+  "Refunded",
+];
 const DIRECT_UPDATE_PAYMENT_STATUSES = ["Pending", "Paid", "Failed"];
 const ORDER_STATUSES = [
   "Pending",
@@ -188,7 +194,11 @@ const validateOrderItems = (items) => {
       };
     }
 
-    if (isProvided(variantId) && variantId !== null && !isValidObjectId(variantId)) {
+    if (
+      isProvided(variantId) &&
+      variantId !== null &&
+      !isValidObjectId(variantId)
+    ) {
       return {
         error: "Variant id must be a valid ObjectId",
       };

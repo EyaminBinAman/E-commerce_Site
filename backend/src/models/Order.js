@@ -203,7 +203,7 @@ const orderSchema = new mongoose.Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ["Pending", "Paid", "Failed", "Refunded"],
+      enum: ["Pending", "Paid", "Failed", "Partially Refunded", "Refunded"],
       default: "Pending",
     },
     orderStatus: {
@@ -225,13 +225,26 @@ const orderSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
-    refund: {
-      type: refundSchema,
-      default: () => ({}),
+    refunds: {
+      type: [refundSchema],
+      default: [],
+    },
+    stockRestored: {
+      type: Boolean,
+      default: false,
     },
     isDeleted: {
       type: Boolean,
       default: false,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
     },
   },
   {

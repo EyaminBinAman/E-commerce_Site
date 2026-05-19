@@ -6,10 +6,7 @@ const getCategories = async (req, res, next) => {
     // Public + user => only active
     // Admin => all categories
 
-    const filter =
-      req.user?.role === "admin"
-        ? {}
-        : { isActive: true };
+    const filter = req.user?.role === "admin" ? {} : { isActive: true };
 
     const categories = await Category.find(filter).sort({
       createdAt: -1,
@@ -43,6 +40,7 @@ const createCategory = async (req, res, next) => {
         $regex: `^${name.trim()}$`,
         $options: "i",
       },
+      isDeleted: { $ne: true },
     });
 
     if (existingCategory) {
@@ -90,6 +88,7 @@ const updateCategoryBySlug = async (req, res, next) => {
           $options: "i",
         },
         _id: { $ne: category._id },
+        isDeleted: { $ne: true },
       });
 
       if (existingCategory) {
@@ -127,7 +126,7 @@ const updateCategoryBySlug = async (req, res, next) => {
 const deleteCategoryBySlug = async (req, res, next) => {
   try {
     const { slug } = req.params;
-    const category = await Category.findOneAndDelete({ slug });
+    const category = await Category.findOne({ slug });
 
     if (!category) {
       return res.status(404).json({
@@ -136,9 +135,14 @@ const deleteCategoryBySlug = async (req, res, next) => {
       });
     }
 
+    category.isDeleted = true;
+    category.isActive = false;
+    await category.save();
+
     return res.status(200).json({
       success: true,
       message: "Category deleted successfully",
+      category,
     });
   } catch (error) {
     next(error);

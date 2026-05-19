@@ -15,18 +15,18 @@ const {
 router.get("/get-products", getProducts);
 router.get("/get-product/:slug", getSingleProduct);
 router.get("/get-deleted-products",
-  // protect, adminOnly,
+  protect, adminOnly,
   getDeletedProducts);
 
 // Admin only
 router.post("/create-product", 
-  // protect, adminOnly,
+  protect, adminOnly,
   createProduct);
 router.patch("/update-product/:slug", 
-  // protect, adminOnly, 
+  protect, adminOnly,
   updateProduct);
 router.delete("/delete-product/:slug", 
-  // protect, adminOnly, 
+  protect, adminOnly,
   deleteProduct);
 
 module.exports = router;

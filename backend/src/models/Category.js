@@ -22,10 +22,8 @@ const categorySchema = new mongoose.Schema(
     slug: {
       type: String,
       required: true,
-      unique: true,
       lowercase: true,
       trim: true,
-      index: true,
     },
 
     animalName: {
@@ -45,9 +43,22 @@ const categorySchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+
+    isDeleted: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
+  }
+);
+
+categorySchema.index(
+  { slug: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { isDeleted: false },
   }
 );
 
@@ -72,6 +83,7 @@ categorySchema.pre("validate", async function (next) {
       await Category.exists({
         slug: candidate,
         _id: { $ne: this._id },
+        isDeleted: { $ne: true },
       })
     ) {
       candidate = `${baseSlug}-${counter++}`;
@@ -84,5 +96,39 @@ categorySchema.pre("validate", async function (next) {
     next(error);
   }
 });
+
+const excludeDeleted = function (next) {
+  if (!this.getOptions().withDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+
+  next();
+};
+
+categorySchema.pre(/^find/, excludeDeleted);
+categorySchema.pre(/^update/, excludeDeleted);
+categorySchema.pre("countDocuments", excludeDeleted);
+
+categorySchema.pre("aggregate", function (next) {
+  if (!this.options.withDeleted) {
+    this.pipeline().unshift({ $match: { isDeleted: { $ne: true } } });
+  }
+
+  next();
+});
+
+const preventHardDelete = function (next) {
+  if (this.getOptions().hardDelete) {
+    return next();
+  }
+
+  const error = new Error("Hard delete is disabled for Category. Use soft delete instead.");
+  error.statusCode = 400;
+  next(error);
+};
+
+categorySchema.pre("deleteOne", { query: true, document: false }, preventHardDelete);
+categorySchema.pre("deleteMany", preventHardDelete);
+categorySchema.pre("findOneAndDelete", preventHardDelete);
 
 module.exports = mongoose.model("Category", categorySchema);

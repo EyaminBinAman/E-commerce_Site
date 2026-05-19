@@ -17,6 +17,12 @@ const sendError = (res, statusCode, message) => {
   });
 };
 
+const createHttpError = (statusCode, message) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
 const isAdmin = (user) => {
   return user?.role === "admin";
 };
@@ -60,7 +66,7 @@ const findVariant = (product, variantId) => {
     return null;
   }
 
-  const variants = product.variants || product.productVariants || [];
+  const variants = getProductVariants(product);
 
   return variants.find((variant) => {
     return (
@@ -69,6 +75,14 @@ const findVariant = (product, variantId) => {
       idsMatch(variant.variantId, variantId)
     );
   });
+};
+
+const getProductVariants = (product) => {
+  return product.variants || product.productVariants || [];
+};
+
+const productHasVariants = (product) => {
+  return getProductVariants(product).length > 0;
 };
 
 const getProductImage = (product, variant) => {
@@ -167,14 +181,115 @@ const getRequestedQuantityMap = (items) => {
   }, new Map());
 };
 
-const generateOrderNumber = async () => {
+const reduceProductStock = (product, quantity) => {
+  if (product.stockQuantity < quantity) {
+    const error = new Error("Insufficient product stock");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  product.stockQuantity -= quantity;
+  product.isOutOfStock = product.stockQuantity <= 0;
+};
+
+const reduceVariantStock = (variant, quantity) => {
+  if (variant.stockQuantity < quantity) {
+    const error = new Error("Insufficient product stock");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  variant.stockQuantity -= quantity;
+};
+
+const syncProductStockFromVariants = (product) => {
+  const totalVariantStock = getProductVariants(product).reduce((total, variant) => {
+    return total + (getFirstNumber(variant.stockQuantity, 0) || 0);
+  }, 0);
+
+  product.stockQuantity = totalVariantStock;
+  product.isOutOfStock = totalVariantStock <= 0;
+};
+
+const restoreStockForOrder = async ({ order, session }) => {
+  const Product = getProductModel();
+  const productIds = [
+    ...new Set(order.items.map((item) => item.product.toString())),
+  ];
+  const products = await Product.find({
+    _id: { $in: productIds.map(toObjectId) },
+  }).session(session);
+  const productsById = new Map(
+    products.map((product) => [product._id.toString(), product])
+  );
+
+  for (const item of order.items) {
+    const product = productsById.get(item.product.toString());
+
+    if (!product) {
+      continue;
+    }
+
+    if (productHasVariants(product)) {
+      const variant = findVariant(product, item.variantId);
+
+      if (variant) {
+        variant.stockQuantity += item.quantity;
+        syncProductStockFromVariants(product);
+      }
+    } else {
+      product.stockQuantity += item.quantity;
+      product.isOutOfStock = product.stockQuantity <= 0;
+    }
+  }
+
+  await Promise.all(
+    [...productsById.values()].map((product) => product.save({ session }))
+  );
+};
+
+const reduceStockForItems = async ({ productsById, items, session }) => {
+  const requestedQuantityMap = getRequestedQuantityMap(items);
+  const processedStockKeys = new Set();
+  const productsToSave = new Set();
+
+  for (const item of items) {
+    const stockKey = getStockKey(item);
+
+    if (processedStockKeys.has(stockKey)) {
+      continue;
+    }
+
+    const product = productsById.get(item.productId);
+    const variant = findVariant(product, item.variantId);
+    const quantity = requestedQuantityMap.get(stockKey);
+
+    if (productHasVariants(product)) {
+      reduceVariantStock(variant, quantity);
+      syncProductStockFromVariants(product);
+    } else {
+      reduceProductStock(product, quantity);
+    }
+
+    processedStockKeys.add(stockKey);
+    productsToSave.add(product);
+  }
+
+  await Promise.all(
+    [...productsToSave].map((product) => product.save({ session }))
+  );
+};
+
+const generateOrderNumber = async (session) => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).slice(2, 8).toUpperCase();
     const orderNumber = `ORD-${timestamp}-${random}`;
-    const existingOrder = await Order.findOne({ orderNumber }).setOptions({
-      withDeleted: true,
-    });
+    const existingOrder = await Order.findOne({ orderNumber })
+      .setOptions({
+        withDeleted: true,
+      })
+      .session(session);
 
     if (!existingOrder) {
       return orderNumber;
@@ -196,7 +311,11 @@ const calculatePromoDiscount = async ({ promoCode }) => {
 };
 
 const createOrder = async (req, res, next) => {
+  const session = await mongoose.startSession();
+
   try {
+    session.startTransaction();
+
     const Product = getProductModel();
     const { items, promoCode, paymentMethod, shippingAddress } = req.validatedOrder;
     const productIds = [...new Set(items.map((item) => item.productId))];
@@ -204,7 +323,7 @@ const createOrder = async (req, res, next) => {
       _id: { $in: productIds.map(toObjectId) },
       isActive: true,
       isDeleted: { $ne: true },
-    });
+    }).session(session);
     const productsById = new Map(
       products.map((product) => [product._id.toString(), product])
     );
@@ -216,29 +335,42 @@ const createOrder = async (req, res, next) => {
       const product = productsById.get(item.productId);
 
       if (!product) {
-        return sendError(res, 404, "Product not found");
+        throw createHttpError(404, "Product not found");
+      }
+
+      const hasVariants = productHasVariants(product);
+
+      if (hasVariants && !item.variantId) {
+        throw createHttpError(400, "Please select a product variant");
+      }
+
+      if (!hasVariants && item.variantId) {
+        throw createHttpError(400, "This product does not have variants");
       }
 
       const variant = findVariant(product, item.variantId);
 
       if (item.variantId && !variant) {
-        return sendError(res, 404, "Product variant not found");
+        throw createHttpError(404, "Product variant not found");
       }
 
       if (variant?.isActive === false) {
-        return sendError(res, 400, "Product variant is not active");
+        throw createHttpError(400, "Product variant is not active");
       }
 
-      const stock = getStock(product, variant);
+      const stock = hasVariants
+        ? getFirstNumber(variant.stockQuantity, variant.stock, variant.quantity)
+        : getFirstNumber(product.stockQuantity, product.stock, product.quantity);
+      const requestedQuantity = requestedQuantityMap.get(getStockKey(item));
 
-      if (stock !== null && stock < requestedQuantityMap.get(getStockKey(item))) {
-        return sendError(res, 400, "Insufficient product stock");
+      if (stock !== null && stock < requestedQuantity) {
+        throw createHttpError(400, "Insufficient product stock");
       }
 
       const { unitPrice, discountedUnitPrice } = getPricingSnapshot(product, variant);
 
       if (unitPrice === null) {
-        return sendError(res, 400, "Product price is not available");
+        throw createHttpError(400, "Product price is not available");
       }
 
       const finalUnitPrice =
@@ -248,7 +380,7 @@ const createOrder = async (req, res, next) => {
       const image = getProductImage(product, variant);
 
       if (!productName) {
-        return sendError(res, 400, "Product name is not available");
+        throw createHttpError(400, "Product name is not available");
       }
 
       if (!image) {
@@ -274,35 +406,49 @@ const createOrder = async (req, res, next) => {
     const promoDiscount = await calculatePromoDiscount({ promoCode });
     const deliveryCharge = 0;
     const grandTotal = subtotal - promoDiscount + deliveryCharge;
-    const orderNumber = await generateOrderNumber();
+    const orderNumber = await generateOrderNumber(session);
 
-    const order = await Order.create({
-      orderNumber,
-      user: req.user._id,
-      userInfo: {
-        name: req.user.name,
-        email: req.user.email,
-        phone: req.user.phone,
-      },
-      items: orderItems,
-      subtotal,
-      promoCode,
-      promoDiscount,
-      deliveryCharge,
-      grandTotal,
-      paymentMethod,
-      paymentStatus: "Pending",
-      orderStatus: "Pending",
-      shippingAddress,
-    });
+    const [order] = await Order.create(
+      [
+        {
+          orderNumber,
+          user: req.user._id,
+          userInfo: {
+            name: req.user.name,
+            email: req.user.email,
+            phone: req.user.phone,
+          },
+          items: orderItems,
+          subtotal,
+          promoCode,
+          promoDiscount,
+          deliveryCharge,
+          grandTotal,
+          paymentMethod,
+          paymentStatus: "Pending",
+          orderStatus: "Pending",
+          shippingAddress,
+        },
+      ],
+      { session }
+    );
+
+    await reduceStockForItems({ productsById, items, session });
+    await session.commitTransaction();
 
     return sendSuccess(res, 201, "Order created successfully", {
       order,
       ...(warnings.length > 0 ? { warnings } : {}),
     });
   } catch (error) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+
     error.statusCode = error.statusCode || 500;
     return next(error);
+  } finally {
+    session.endSession();
   }
 };
 
@@ -349,18 +495,26 @@ const getSingleOrder = async (req, res, next) => {
 };
 
 const updateOrder = async (req, res, next) => {
-  try {
-    if (!isAdmin(req.user)) {
-      return sendError(res, 403, "Admin access only");
-    }
+  if (!isAdmin(req.user)) {
+    return sendError(res, 403, "Admin access only");
+  }
 
-    const order = await Order.findById(req.orderId);
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    const order = await Order.findById(req.orderId).session(session);
 
     if (!order) {
-      return sendError(res, 404, "Order not found");
+      throw createHttpError(404, "Order not found");
     }
 
     const { shippingAddress, ...updateData } = req.validatedOrder;
+    const shouldRestoreStock =
+      updateData.orderStatus === "Cancelled" &&
+      order.orderStatus !== "Cancelled" &&
+      !order.stockRestored;
 
     order.set(updateData);
 
@@ -373,11 +527,23 @@ const updateOrder = async (req, res, next) => {
       });
     }
 
-    await order.save();
+    if (shouldRestoreStock) {
+      await restoreStockForOrder({ order, session });
+      order.stockRestored = true;
+    }
+
+    await order.save({ session });
+    await session.commitTransaction();
 
     return sendSuccess(res, 200, "Order updated successfully", { order });
   } catch (error) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+
     return next(error);
+  } finally {
+    session.endSession();
   }
 };
 
@@ -393,21 +559,35 @@ const refundOrder = async (req, res, next) => {
       return sendError(res, 404, "Order not found");
     }
 
-    if (order.paymentStatus !== "Paid") {
+    if (
+      order.paymentStatus !== "Paid" &&
+      order.paymentStatus !== "Partially Refunded"
+    ) {
       return sendError(res, 400, "Only paid orders can be refunded");
     }
 
-    if (req.validatedRefund.amount > order.grandTotal) {
+    const totalRefunded = order.refunds.reduce((sum, refund) => {
+      return sum + (refund.amount || 0);
+    }, 0);
+    const remainingRefundableAmount = order.grandTotal - totalRefunded;
+
+    if (req.validatedRefund.amount > remainingRefundableAmount) {
       return sendError(res, 400, "Refund amount cannot exceed order total");
     }
 
+    const newTotalRefunded = totalRefunded + req.validatedRefund.amount;
+    const paymentStatus =
+      newTotalRefunded < order.grandTotal
+        ? "Partially Refunded"
+        : "Refunded";
+
     order.set({
-      paymentStatus: "Refunded",
-      refund: {
-        ...req.validatedRefund,
-        refundedAt: new Date(),
-        refundedBy: req.user._id,
-      },
+      paymentStatus,
+    });
+    order.refunds.push({
+      ...req.validatedRefund,
+      refundedAt: new Date(),
+      refundedBy: req.user._id,
     });
     await order.save();
 
@@ -429,7 +609,11 @@ const softDeleteOrder = async (req, res, next) => {
       return sendError(res, 404, "Order not found");
     }
 
-    order.set({ isDeleted: true });
+    order.set({
+      isDeleted: true,
+      deletedAt: new Date(),
+      deletedBy: req.user._id,
+    });
     await order.save();
 
     return sendSuccess(res, 200, "Order deleted successfully", { order });
