@@ -10,6 +10,17 @@ const createSlug = (name) => {
     .replace(/^-+|-+$/g, "");
 };
 
+const escapeRegex = (value) => {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+};
+
+const findAnimalByName = async (name, animalId = null) => {
+  return Animal.findOne({
+    name: { $regex: `^${escapeRegex(name.trim())}$`, $options: "i" },
+    ...(animalId ? { _id: { $ne: animalId } } : {}),
+  });
+};
+
 const createUniqueSlug = async (name, animalId = null) => {
   const baseSlug = createSlug(name);
 
@@ -62,15 +73,25 @@ const getAnimals = async (req, res, next) => {
 const postAnimal = async (req, res, next) => {
   try {
     const { name } = req.body;
+    const trimmedName = name?.trim();
 
-    if (!name || !name.trim()) {
+    if (!trimmedName) {
       return res.status(400).json({
         success: false,
         message: "Animal name is required",
       });
     }
 
-    const slug = await createUniqueSlug(name);
+    const existingAnimal = await findAnimalByName(trimmedName);
+
+    if (existingAnimal) {
+      return res.status(400).json({
+        success: false,
+        message: "This animal already exists",
+      });
+    }
+
+    const slug = await createUniqueSlug(trimmedName);
 
     if (!slug) {
       return res.status(400).json({
@@ -80,7 +101,7 @@ const postAnimal = async (req, res, next) => {
     }
 
     const animal = await Animal.create({
-      name,
+      name: trimmedName,
       slug,
     });
 
@@ -98,12 +119,13 @@ const updateAnimal = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { name } = req.body;
+    const trimmedName = name?.trim();
 
     if (isInvalidAnimalId(id, res)) {
       return;
     }
 
-    if (!name || !name.trim()) {
+    if (!trimmedName) {
       return res.status(400).json({
         success: false,
         message: "Animal name is required",
@@ -119,7 +141,16 @@ const updateAnimal = async (req, res, next) => {
       });
     }
 
-    const slug = await createUniqueSlug(name, animal._id);
+    const existingAnimal = await findAnimalByName(trimmedName, animal._id);
+
+    if (existingAnimal) {
+      return res.status(400).json({
+        success: false,
+        message: "This animal already exists",
+      });
+    }
+
+    const slug = await createUniqueSlug(trimmedName, animal._id);
 
     if (!slug) {
       return res.status(400).json({
@@ -128,7 +159,7 @@ const updateAnimal = async (req, res, next) => {
       });
     }
 
-    animal.name = name;
+    animal.name = trimmedName;
     animal.slug = slug;
     await animal.save();
 
