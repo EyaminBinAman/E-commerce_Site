@@ -5,13 +5,33 @@ const notFound = (req, res, next) => {
 };
 
 const errorHandler = (error, req, res, next) => {
-  const statusCode = error.statusCode || 500;
+  let statusCode = error.statusCode || 500;
+  let message = error.message || "Internal server error";
+
+  if (error.name === "CastError") {
+    statusCode = 400;
+    message = "Invalid resource id";
+  }
+
+  if (error.name === "ValidationError") {
+    statusCode = 400;
+    message = Object.values(error.errors)
+      .map((validationError) => validationError.message)
+      .join(", ");
+  }
+
+  if (error.code === 11000) {
+    statusCode = 400;
+    message = "Duplicate value already exists";
+  }
+
+  if (statusCode === 500) {
+    message = "Internal server error";
+  }
 
   res.status(statusCode).json({
     success: false,
-    message: error.message || "Internal server error",
-    stack:
-      process.env.NODE_ENV === "production" ? undefined : error.stack,
+    message,
   });
 };
 
