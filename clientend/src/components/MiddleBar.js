@@ -1,3 +1,5 @@
+ "use client";
+
 import Link from "next/link";
 import {
   HiOutlineHeart,
@@ -7,15 +9,17 @@ import {
 } from "react-icons/hi2";
 import { PiPawPrintFill } from "react-icons/pi";
 
+import { useCart } from "@/components/CartProvider";
 import Container from "@/components/Container";
 
-const quickActions = [
-  { label: "Sign In", count: null, icon: HiOutlineUser },
-  { label: "Wishlist", count: null, icon: HiOutlineHeart },
-  { label: "Cart", count: 0, icon: HiOutlineShoppingCart },
-];
-
 export default function MiddleBar() {
+  const { cartCount } = useCart();
+  const quickActions = [
+    { label: "Sign In", count: null, icon: HiOutlineUser, href: "/" },
+    { label: "Wishlist", count: null, icon: HiOutlineHeart, href: "/" },
+    { label: "Cart", count: cartCount, icon: HiOutlineShoppingCart, href: "/cart" },
+  ];
+
   return (
     <div className="border-b border-neutral-200 bg-white">
       <Container>
@@ -50,10 +54,10 @@ export default function MiddleBar() {
             </form>
 
             <div className="flex flex-wrap items-center gap-3">
-              {quickActions.map(({ label, count, icon: Icon }) => (
-                <button
+              {quickActions.map(({ label, count, icon: Icon, href }) => (
+                <Link
                   key={label}
-                  type="button"
+                  href={href}
                   className="flex h-12 items-center gap-2 rounded-2xl border border-neutral-200 px-4 text-sm font-semibold text-main transition-colors duration-300 hover:border-main hover:bg-main hover:text-white"
                 >
                   <Icon className="text-lg" />
@@ -63,7 +67,7 @@ export default function MiddleBar() {
                       {count}
                     </span>
                   ) : null}
-                </button>
+                </Link>
               ))}
             </div>
           </div>

@@ -11,6 +11,8 @@ import {
   HiStar,
 } from "react-icons/hi2";
 
+import { useCart } from "@/components/CartProvider";
+
 const apiOrigin =
   process.env.NEXT_PUBLIC_API_ORIGIN || "http://localhost:3000";
 
@@ -103,6 +105,7 @@ function RelatedProductCard({ product }) {
 }
 
 export default function ProductDetails({ product, relatedProducts }) {
+  const { addToCart } = useCart();
   const images = product.images?.length ? product.images : [null];
   const [selectedImage, setSelectedImage] = useState(images[0]);
   const activeVariants = useMemo(
@@ -114,6 +117,8 @@ export default function ProductDetails({ product, relatedProducts }) {
   );
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState("description");
+  const [cartMessage, setCartMessage] = useState("");
+  const [isAddingToCart, setIsAddingToCart] = useState(false);
 
   const selectedVariant = activeVariants.find(
     (variant) => variant._id === selectedVariantId
@@ -129,6 +134,26 @@ export default function ProductDetails({ product, relatedProducts }) {
     { id: "information", label: "Additional information" },
     { id: "reviews", label: "Reviews" },
   ];
+
+  const handleAddToCart = async () => {
+    setCartMessage("");
+    setIsAddingToCart(true);
+
+    try {
+      await addToCart({
+        productId: product._id,
+        variantId: selectedVariant?._id || null,
+        quantity,
+      });
+      setCartMessage("Added to cart");
+    } catch (error) {
+      setCartMessage(
+        error.status === 401 ? "Login required" : error.message || "Could not add to cart"
+      );
+    } finally {
+      setIsAddingToCart(false);
+    }
+  };
 
   return (
     <>
@@ -282,11 +307,12 @@ export default function ProductDetails({ product, relatedProducts }) {
               />
               <button
                 type="button"
-                disabled={isOutOfStock}
+                disabled={isOutOfStock || isAddingToCart}
+                onClick={handleAddToCart}
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-main px-6 text-sm font-black text-white transition-all duration-300 hover:-translate-y-0.5 hover:bg-main/90 disabled:cursor-not-allowed disabled:bg-neutral-300"
               >
                 <HiOutlineShoppingBag className="text-lg" />
-                Add to Cart
+                {isAddingToCart ? "Adding..." : "Add to Cart"}
               </button>
               <button
                 type="button"
@@ -296,6 +322,15 @@ export default function ProductDetails({ product, relatedProducts }) {
                 Wishlist
               </button>
             </div>
+            {cartMessage ? (
+              <p
+                className={`text-sm font-bold ${
+                  cartMessage === "Added to cart" ? "text-emerald-700" : "text-red-600"
+                }`}
+              >
+                {cartMessage}
+              </p>
+            ) : null}
           </div>
 
           <dl className="mt-6 grid gap-3 text-sm text-neutral-600 sm:grid-cols-2">
