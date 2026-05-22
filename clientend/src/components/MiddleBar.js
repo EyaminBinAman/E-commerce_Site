@@ -11,12 +11,14 @@ import { PiPawPrintFill } from "react-icons/pi";
 
 import { useCart } from "@/components/CartProvider";
 import Container from "@/components/Container";
+import { useWishlist } from "@/components/WishlistProvider";
 
 export default function MiddleBar() {
   const { cartCount } = useCart();
+  const { wishlistCount } = useWishlist();
   const quickActions = [
     { label: "Sign In", count: null, icon: HiOutlineUser, href: "/" },
-    { label: "Wishlist", count: null, icon: HiOutlineHeart, href: "/" },
+    { label: "Wishlist", count: wishlistCount, icon: HiOutlineHeart, href: "/wishlist" },
     { label: "Cart", count: cartCount, icon: HiOutlineShoppingCart, href: "/cart" },
   ];
 

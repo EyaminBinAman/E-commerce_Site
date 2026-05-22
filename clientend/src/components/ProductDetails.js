@@ -12,6 +12,7 @@ import {
 } from "react-icons/hi2";
 
 import { useCart } from "@/components/CartProvider";
+import { useWishlist } from "@/components/WishlistProvider";
 
 const apiOrigin =
   process.env.NEXT_PUBLIC_API_ORIGIN || "http://localhost:3000";
@@ -106,6 +107,7 @@ function RelatedProductCard({ product }) {
 
 export default function ProductDetails({ product, relatedProducts }) {
   const { addToCart } = useCart();
+  const { isWishlisted, toggleWishlist } = useWishlist();
   const images = product.images?.length ? product.images : [null];
   const [selectedImage, setSelectedImage] = useState(images[0]);
   const activeVariants = useMemo(
@@ -118,6 +120,7 @@ export default function ProductDetails({ product, relatedProducts }) {
   const [quantity, setQuantity] = useState(1);
   const [activeTab, setActiveTab] = useState("description");
   const [cartMessage, setCartMessage] = useState("");
+  const [wishlistMessage, setWishlistMessage] = useState("");
   const [isAddingToCart, setIsAddingToCart] = useState(false);
 
   const selectedVariant = activeVariants.find(
@@ -128,6 +131,7 @@ export default function ProductDetails({ product, relatedProducts }) {
     selectedVariant?.stockQuantity ?? product.stockQuantity ?? 0;
   const isOutOfStock = product.isOutOfStock || stockQuantity <= 0;
   const hasDiscount = typeof product.discountPrice === "number";
+  const productIsWishlisted = isWishlisted(product._id);
 
   const tabs = [
     { id: "description", label: "Description" },
@@ -153,6 +157,13 @@ export default function ProductDetails({ product, relatedProducts }) {
     } finally {
       setIsAddingToCart(false);
     }
+  };
+
+  const handleToggleWishlist = async () => {
+    setWishlistMessage("");
+
+    const added = toggleWishlist(product);
+    setWishlistMessage(added ? "Added to wishlist" : "Removed from wishlist");
   };
 
   return (
@@ -316,10 +327,11 @@ export default function ProductDetails({ product, relatedProducts }) {
               </button>
               <button
                 type="button"
+                onClick={handleToggleWishlist}
                 className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-neutral-200 px-5 text-sm font-black text-main transition-all duration-300 hover:border-main hover:bg-main hover:text-white"
               >
                 <HiOutlineHeart className="text-lg" />
-                Wishlist
+                {productIsWishlisted ? "Wishlisted" : "Wishlist"}
               </button>
             </div>
             {cartMessage ? (
@@ -329,6 +341,18 @@ export default function ProductDetails({ product, relatedProducts }) {
                 }`}
               >
                 {cartMessage}
+              </p>
+            ) : null}
+            {wishlistMessage ? (
+              <p
+                className={`text-sm font-bold ${
+                  wishlistMessage.includes("Added") ||
+                  wishlistMessage.includes("Removed")
+                    ? "text-emerald-700"
+                    : "text-red-600"
+                }`}
+              >
+                {wishlistMessage}
               </p>
             ) : null}
           </div>
