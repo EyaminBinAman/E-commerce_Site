@@ -97,6 +97,23 @@ export function CartProvider({ children }) {
     return data.cart;
   }, []);
 
+  const calculateCart = useCallback(async ({ promoCode = "", deliveryZone = "inside-dhaka" }) => {
+    const response = await fetch(`${apiBaseUrl}/cart/calculate-cart`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        promoCode,
+        deliveryZone,
+      }),
+    });
+    const data = await readResponse(response);
+    setCart(data.cart);
+    return data.summary;
+  }, []);
+
   useEffect(() => {
     fetchCart().catch(() => undefined);
   }, [fetchCart]);
@@ -113,9 +130,11 @@ export function CartProvider({ children }) {
       updateCartItem,
       removeCartItem,
       clearCart,
+      calculateCart,
     }),
     [
       addToCart,
+      calculateCart,
       cart,
       clearCart,
       fetchCart,

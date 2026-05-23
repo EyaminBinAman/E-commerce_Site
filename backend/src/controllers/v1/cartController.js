@@ -3,6 +3,14 @@ const mongoose = require("mongoose");
 const Cart = require("../../models/Cart");
 const Product = require("../../models/Product");
 
+let PromoCode = null;
+
+try {
+  PromoCode = require("../../models/PromoCode");
+} catch (_error) {
+  PromoCode = null;
+}
+
 const sendSuccess = (res, statusCode, message, data) => {
   return res.status(statusCode).json({
     success: true,
@@ -122,6 +130,162 @@ const formatCart = async (cart) => {
       subtotal,
       createdAt: cart.createdAt,
       updatedAt: cart.updatedAt,
+    },
+  };
+};
+
+const roundMoney = (value) => {
+  return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+};
+
+const getDeliveryCharge = (deliveryZone, discountedSubtotal) => {
+  const normalizedZone = deliveryZone === "outside-dhaka" ? "outside-dhaka" : "inside-dhaka";
+  const baseCharge = normalizedZone === "outside-dhaka" ? 120 : 60;
+
+  return {
+    deliveryZone: normalizedZone,
+    deliveryCharge: discountedSubtotal >= 500 ? 0 : baseCharge,
+  };
+};
+
+const findPromoCode = async (promoCode) => {
+  if (!PromoCode || !promoCode?.trim()) {
+    return null;
+  }
+
+  return PromoCode.findOne({
+    nameNormalized: promoCode.trim().toLowerCase(),
+  });
+};
+
+const calculateVoucherDiscount = async ({ promoCode, subtotal, user }) => {
+  if (!promoCode?.trim()) {
+    return {
+      appliedPromoCode: null,
+      voucherDiscount: 0,
+      voucherMessage: null,
+    };
+  }
+
+  const promo = await findPromoCode(promoCode);
+
+  if (!promo) {
+    return {
+      appliedPromoCode: null,
+      voucherDiscount: 0,
+      voucherMessage: "Voucher is not available",
+    };
+  }
+
+  const now = new Date();
+
+  if (!promo.isActive) {
+    return {
+      appliedPromoCode: null,
+      voucherDiscount: 0,
+      voucherMessage: "Voucher is inactive",
+    };
+  }
+
+  if (promo.startDate > now) {
+    return {
+      appliedPromoCode: null,
+      voucherDiscount: 0,
+      voucherMessage: "Voucher has not started yet",
+    };
+  }
+
+  if (promo.expiryDate < now) {
+    return {
+      appliedPromoCode: null,
+      voucherDiscount: 0,
+      voucherMessage: "Voucher has expired",
+    };
+  }
+
+  if (subtotal < promo.minOrder) {
+    return {
+      appliedPromoCode: null,
+      voucherDiscount: 0,
+      voucherMessage: `Minimum order amount is ${promo.minOrder}`,
+    };
+  }
+
+  if (promo.totalUsageLimit && promo.usageCount >= promo.totalUsageLimit) {
+    return {
+      appliedPromoCode: null,
+      voucherDiscount: 0,
+      voucherMessage: "Voucher usage limit reached",
+    };
+  }
+
+  const userUsage = (promo.usageRecords || []).find((record) => {
+    return record.user?.toString() === user._id.toString();
+  });
+
+  if ((userUsage?.count || 0) >= promo.usageLimitPerUser) {
+    return {
+      appliedPromoCode: null,
+      voucherDiscount: 0,
+      voucherMessage: "You have reached the usage limit for this voucher",
+    };
+  }
+
+  const rawDiscount =
+    promo.discountType === "percentage"
+      ? (subtotal * promo.discountValue) / 100
+      : promo.discountValue;
+  const cappedDiscount =
+    promo.maxAmount === null || promo.maxAmount === undefined
+      ? rawDiscount
+      : Math.min(rawDiscount, promo.maxAmount);
+  const voucherDiscount = Math.min(subtotal, cappedDiscount);
+
+  return {
+    appliedPromoCode: promo.name,
+    voucherDiscount: roundMoney(voucherDiscount),
+    voucherMessage: "Voucher applied",
+  };
+};
+
+const buildCartSummary = async ({ cart, promoCode, deliveryZone, user }) => {
+  const { cart: formattedCart } = await formatCart(cart);
+  const itemsSubtotal = roundMoney(formattedCart.subtotal);
+  const voucher = await calculateVoucherDiscount({
+    promoCode,
+    subtotal: itemsSubtotal,
+    user,
+  });
+  const discountedSubtotal = roundMoney(
+    Math.max(0, itemsSubtotal - voucher.voucherDiscount)
+  );
+  const delivery = getDeliveryCharge(deliveryZone, discountedSubtotal);
+  const vatRate = 0.05;
+  const vat = roundMoney(discountedSubtotal * vatRate);
+  const extraCharges = [];
+  const extraChargeTotal = roundMoney(
+    extraCharges.reduce((sum, charge) => sum + charge.amount, 0)
+  );
+  const grandTotal = roundMoney(
+    discountedSubtotal + delivery.deliveryCharge + vat + extraChargeTotal
+  );
+
+  return {
+    cart: formattedCart,
+    summary: {
+      itemsSubtotal,
+      appliedPromoCode: voucher.appliedPromoCode,
+      voucherDiscount: voucher.voucherDiscount,
+      voucherMessage: voucher.voucherMessage,
+      discountedSubtotal,
+      deliveryZone: delivery.deliveryZone,
+      deliveryCharge: delivery.deliveryCharge,
+      freeDeliveryThreshold: 500,
+      vatRate,
+      vat,
+      extraCharges,
+      extraChargeTotal,
+      grandTotal,
     },
   };
 };
@@ -307,10 +471,28 @@ const clearCart = async (req, res, next) => {
   }
 };
 
+const calculateCart = async (req, res, next) => {
+  try {
+    const cart = await getOrCreateCart(req.user._id);
+    const { promoCode = "", deliveryZone = "inside-dhaka" } = req.body;
+    const calculatedCart = await buildCartSummary({
+      cart,
+      promoCode,
+      deliveryZone,
+      user: req.user,
+    });
+
+    return sendSuccess(res, 200, "Cart calculated successfully", calculatedCart);
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getCart,
   addToCart,
   updateCartItem,
   removeCartItem,
   clearCart,
+  calculateCart,
 };

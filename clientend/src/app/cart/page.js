@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import {
   HiMinus,
   HiOutlineShoppingBag,
@@ -42,7 +43,61 @@ export default function CartPage() {
     updateCartItem,
     removeCartItem,
     clearCart,
+    calculateCart,
   } = useCart();
+  const [promoCode, setPromoCode] = useState("");
+  const [appliedPromoCode, setAppliedPromoCode] = useState("");
+  const [deliveryZone, setDeliveryZone] = useState("inside-dhaka");
+  const [summary, setSummary] = useState(null);
+  const [summaryMessage, setSummaryMessage] = useState("");
+  const [isCalculating, setIsCalculating] = useState(false);
+
+  useEffect(() => {
+    if (!cartItems.length) {
+      setSummary(null);
+      return;
+    }
+
+    setIsCalculating(true);
+    calculateCart({
+      promoCode: appliedPromoCode,
+      deliveryZone,
+    })
+      .then((nextSummary) => {
+        setSummary(nextSummary);
+        setSummaryMessage(nextSummary?.voucherMessage || "");
+      })
+      .catch((error) => {
+        setSummaryMessage(error.message || "Could not calculate cart");
+      })
+      .finally(() => {
+        setIsCalculating(false);
+      });
+  }, [appliedPromoCode, calculateCart, cartItems.length, cartSubtotal, deliveryZone]);
+
+  const handleApplyVoucher = () => {
+    setAppliedPromoCode(promoCode.trim());
+  };
+
+  const handleRemoveVoucher = () => {
+    setPromoCode("");
+    setAppliedPromoCode("");
+    setSummaryMessage("");
+  };
+
+  const displaySummary = summary || {
+    itemsSubtotal: cartSubtotal,
+    voucherDiscount: 0,
+    discountedSubtotal: cartSubtotal,
+    deliveryZone,
+    deliveryCharge: 0,
+    freeDeliveryThreshold: 500,
+    vatRate: 0.05,
+    vat: 0,
+    extraCharges: [],
+    extraChargeTotal: 0,
+    grandTotal: cartSubtotal,
+  };
 
   return (
     <main className="bg-white">
@@ -180,22 +235,126 @@ export default function CartPage() {
 
             <aside className="h-fit rounded-lg border border-neutral-200 p-5">
               <h2 className="text-xl font-black text-neutral-950">Summary</h2>
+
+              <div className="mt-5 space-y-4">
+                <div>
+                  <label
+                    htmlFor="deliveryZone"
+                    className="text-sm font-black text-neutral-950"
+                  >
+                    Delivery area
+                  </label>
+                  <select
+                    id="deliveryZone"
+                    value={deliveryZone}
+                    onChange={(event) => setDeliveryZone(event.target.value)}
+                    className="mt-2 h-11 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-700 outline-none transition-colors duration-300 focus:border-main"
+                  >
+                    <option value="inside-dhaka">Inside Dhaka</option>
+                    <option value="outside-dhaka">Outside Dhaka</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="promoCode"
+                    className="text-sm font-black text-neutral-950"
+                  >
+                    Voucher
+                  </label>
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      id="promoCode"
+                      type="text"
+                      value={promoCode}
+                      onChange={(event) => setPromoCode(event.target.value)}
+                      placeholder="Enter voucher code"
+                      className="h-11 min-w-0 flex-1 rounded-lg border border-neutral-200 px-3 text-sm font-semibold uppercase text-neutral-700 outline-none transition-colors duration-300 placeholder:normal-case placeholder:text-neutral-400 focus:border-main"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyVoucher}
+                      disabled={!promoCode.trim() || isCalculating}
+                      className="h-11 rounded-lg bg-main px-4 text-sm font-black text-white transition-colors duration-300 hover:bg-main/90 disabled:cursor-not-allowed disabled:bg-neutral-300"
+                    >
+                      Apply
+                    </button>
+                  </div>
+                  {appliedPromoCode ? (
+                    <button
+                      type="button"
+                      onClick={handleRemoveVoucher}
+                      className="mt-2 text-sm font-bold text-red-600 transition-colors duration-300 hover:text-red-700"
+                    >
+                      Remove voucher
+                    </button>
+                  ) : null}
+                  {summaryMessage ? (
+                    <p
+                      className={`mt-2 text-sm font-bold ${
+                        displaySummary.voucherDiscount > 0
+                          ? "text-emerald-700"
+                          : "text-red-600"
+                      }`}
+                    >
+                      {summaryMessage}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+
               <div className="mt-5 space-y-3 border-b border-neutral-200 pb-5 text-sm">
                 <div className="flex items-center justify-between">
                   <span className="text-neutral-600">Subtotal</span>
                   <span className="font-black text-neutral-950">
-                    {formatPrice(cartSubtotal)}
+                    {formatPrice(displaySummary.itemsSubtotal)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-600">Voucher discount</span>
+                  <span className="font-black text-emerald-700">
+                    -{formatPrice(displaySummary.voucherDiscount)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-600">After discount</span>
+                  <span className="font-black text-neutral-950">
+                    {formatPrice(displaySummary.discountedSubtotal)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-neutral-600">Delivery</span>
-                  <span className="font-bold text-neutral-500">Calculated later</span>
+                  <span className="font-black text-neutral-950">
+                    {formatPrice(displaySummary.deliveryCharge)}
+                  </span>
                 </div>
+                <p className="text-xs font-semibold text-neutral-500">
+                  Free delivery over {formatPrice(displaySummary.freeDeliveryThreshold)}
+                </p>
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-600">
+                    VAT ({Math.round(displaySummary.vatRate * 100)}%)
+                  </span>
+                  <span className="font-black text-neutral-950">
+                    {formatPrice(displaySummary.vat)}
+                  </span>
+                </div>
+                {displaySummary.extraCharges.map((charge) => (
+                  <div
+                    key={charge.label}
+                    className="flex items-center justify-between"
+                  >
+                    <span className="text-neutral-600">{charge.label}</span>
+                    <span className="font-black text-neutral-950">
+                      {formatPrice(charge.amount)}
+                    </span>
+                  </div>
+                ))}
               </div>
               <div className="mt-5 flex items-center justify-between text-lg">
                 <span className="font-black text-neutral-950">Total</span>
                 <span className="font-black text-main">
-                  {formatPrice(cartSubtotal)}
+                  {formatPrice(displaySummary.grandTotal)}
                 </span>
               </div>
               <button
