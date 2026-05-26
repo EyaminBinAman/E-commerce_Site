@@ -6,8 +6,10 @@ export default function Header() {
   return (
     <>
       <TopBar />
-      <MiddleBar />
-      <Navbar />
+      <div className="sticky top-0 z-50">
+        <MiddleBar />
+        <Navbar />
+      </div>
     </>
   );
 }
