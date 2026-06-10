@@ -18,11 +18,11 @@ const payments = [
 export default function PaymentDetailsDashboard() {
   return (
     <DashboardShell activeItem="Payment Details">
-      <div className="rounded-[28px] border border-slate-200 bg-white px-6 py-7 shadow-lg shadow-slate-200/60 md:px-8">
-        <p className="text-sm font-black uppercase tracking-[0.35em] text-[#4383a3]">
+      <div className="rounded-[28px] border border-neutral-200 bg-white px-6 py-7 shadow-lg shadow-main/5 md:px-8">
+        <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">
           Payments
         </p>
-        <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-950 md:text-4xl">
+        <h1 className="mt-3 text-3xl font-black tracking-tight text-main md:text-4xl">
           Payment Details
         </h1>
         <p className="mt-4 max-w-4xl text-sm font-semibold leading-7 text-slate-400 md:text-base">
@@ -31,7 +31,7 @@ export default function PaymentDetailsDashboard() {
           workflow.
         </p>
 
-        <label className="mt-7 flex h-14 items-center rounded-2xl border border-slate-200 bg-white px-5 text-slate-400 shadow-inner shadow-slate-100">
+        <label className="mt-7 flex h-14 items-center rounded-2xl border border-neutral-200 bg-white px-5 text-slate-400 shadow-inner shadow-main/5">
           <Icon name="search" className="h-5 w-5" />
           <input
             type="search"
@@ -42,7 +42,7 @@ export default function PaymentDetailsDashboard() {
         </label>
       </div>
 
-      <div className="mt-8 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-lg shadow-slate-200/70">
+      <div className="mt-8 overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-lg shadow-main/5">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1180px] border-collapse text-left">
             <thead className="bg-white">
@@ -66,7 +66,7 @@ export default function PaymentDetailsDashboard() {
                     <p className="mt-2 text-sm font-semibold text-slate-400">{payment.phone}</p>
                   </td>
                   <td className="px-8 py-7">
-                    <p className="text-sm font-black text-[#4383a3]">{payment.order}</p>
+                    <p className="text-sm font-black text-main">{payment.order}</p>
                     <p className="mt-2 text-sm font-semibold text-slate-400">{payment.date}</p>
                   </td>
                   <td className="px-8 py-7 text-sm font-bold text-slate-500">{payment.method}</td>
@@ -83,13 +83,13 @@ export default function PaymentDetailsDashboard() {
                     <div className="flex flex-col items-center gap-3">
                       <button
                         type="button"
-                        className="h-11 rounded-2xl border border-sky-100 bg-sky-50 px-6 text-sm font-black text-[#4383a3] shadow-sm transition hover:bg-sky-100"
+                        className="h-11 rounded-2xl border border-main/20 bg-mainSoft/60 px-6 text-sm font-black text-main shadow-sm transition hover:bg-mainSoft"
                       >
                         View order
                       </button>
                       <button
                         type="button"
-                        className="h-12 rounded-2xl bg-[#248bcb] px-8 text-sm font-black text-white shadow-md shadow-sky-700/25 transition hover:bg-[#1978b4]"
+                        className="h-12 rounded-2xl bg-main px-8 text-sm font-black text-white shadow-md shadow-main/20 transition hover:bg-mainHover"
                       >
                         Mark paid
                       </button>

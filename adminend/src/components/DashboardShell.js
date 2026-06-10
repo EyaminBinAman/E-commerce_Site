@@ -5,7 +5,7 @@ const navGroups = [
       { label: "Dashboard", icon: "grid", href: "#" },
       { label: "Invoices", icon: "invoice", href: "#" },
       { label: "Orders", icon: "cart", href: "/dashboard/orders" },
-      { label: "Customer Management", icon: "users", href: "#" },
+      { label: "Customer Management", icon: "users", href: "/dashboard/customer-management" },
       { label: "Customer Comments", icon: "chat", href: "#" },
       { label: "Payment Details", icon: "card", href: "/dashboard/payment-details" },
       { label: "Sales Reports", icon: "chart", href: "#" },
@@ -15,9 +15,9 @@ const navGroups = [
   {
     title: "Catalog",
     items: [
-      { label: "Categories", icon: "folder", href: "#" },
-      { label: "Brands", icon: "tag", href: "#" },
-      { label: "Products", icon: "cart", href: "#" },
+      { label: "Categories", icon: "folder", href: "/dashboard/categories" },
+      { label: "Brands", icon: "tag", href: "/dashboard/brands" },
+      { label: "Products", icon: "cart", href: "/dashboard/products" },
     ],
   },
   {
@@ -140,6 +140,27 @@ export function Icon({ name, className = "h-5 w-5" }) {
         <path d="M7 15v4a2 2 0 0 0 2 2h1" />
       </>
     ),
+    trash: (
+      <>
+        <path d="M3 6h18" />
+        <path d="M8 6V4h8v2" />
+        <path d="M19 6l-1 14H6L5 6" />
+        <path d="M10 10v6" />
+        <path d="M14 10v6" />
+      </>
+    ),
+    x: (
+      <>
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </>
+    ),
+    edit: (
+      <>
+        <path d="M3 21h6" />
+        <path d="M14.5 4.5a2.1 2.1 0 0 1 3 3L8 17l-4 1 1-4z" />
+      </>
+    ),
   };
 
   return <svg {...common}>{paths[name]}</svg>;
@@ -150,7 +171,7 @@ export function Badge({ children, tone }) {
     green: "bg-emerald-100 text-emerald-700",
     yellow: "bg-amber-100 text-amber-700",
     gray: "bg-slate-100 text-slate-600",
-    blue: "bg-sky-100 text-sky-700",
+    blue: "bg-mainSoft text-main",
   };
 
   return (
@@ -162,27 +183,27 @@ export function Badge({ children, tone }) {
 
 function Sidebar({ activeItem }) {
   return (
-    <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white px-6 py-6 lg:block">
+    <aside className="hidden w-60 shrink-0 border-r border-slate-200 bg-white px-4 py-5 lg:block">
       <div className="flex items-center gap-4">
         <button type="button" aria-label="Open menu" className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 text-slate-500 shadow-sm">
           <Icon name="menu" className="h-5 w-5" />
         </button>
         <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[#12395a] to-[#2a86b2] text-lg font-black text-white shadow-lg shadow-sky-900/20">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-main to-accent text-lg font-black text-white shadow-lg shadow-main/20">
             A
           </div>
           <div>
-            <p className="text-lg font-black text-slate-900">AdminFlow</p>
+            <p className="text-lg font-black text-main">AdminFlow</p>
             <p className="text-xs font-black uppercase tracking-[0.35em] text-slate-400">Dashboard</p>
           </div>
         </div>
       </div>
 
-      <nav className="mt-11 space-y-8">
+      <nav className="mt-8 space-y-6">
         {navGroups.map((group) => (
           <div key={group.title}>
             <p className="px-2 text-xs font-black uppercase tracking-[0.35em] text-slate-300">{group.title}</p>
-            <div className="mt-4 space-y-1.5">
+            <div className="mt-3 space-y-1.5">
               {group.items.map((item) => {
                 const isActive = item.label === activeItem;
 
@@ -190,10 +211,10 @@ function Sidebar({ activeItem }) {
                   <a
                     href={item.href}
                     key={`${group.title}-${item.label}`}
-                    className={`flex h-12 items-center gap-4 rounded-2xl px-4 text-sm font-extrabold transition ${
+                    className={`flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-extrabold transition ${
                       isActive
-                        ? "bg-sky-100 text-[#357ca6] shadow-inner"
-                        : "text-slate-500 hover:bg-slate-50 hover:text-[#357ca6]"
+                        ? "bg-mainSoft text-main shadow-inner"
+                        : "text-slate-500 hover:bg-mainSoft/60 hover:text-main"
                     }`}
                   >
                     <Icon name={item.icon} className="h-5 w-5" />
@@ -211,30 +232,30 @@ function Sidebar({ activeItem }) {
 
 function Topbar() {
   return (
-    <header className="sticky top-0 z-20 flex h-24 items-center justify-between border-b border-slate-200 bg-white/95 px-4 backdrop-blur md:px-8 lg:px-12">
+    <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-neutral-200 bg-mainSoft/60 px-3 backdrop-blur md:px-6 lg:px-8">
       <div className="flex items-center gap-3 lg:hidden">
-        <button type="button" aria-label="Open menu" className="flex h-11 w-11 items-center justify-center rounded-2xl border border-slate-200 text-slate-500 shadow-sm">
+        <button type="button" aria-label="Open menu" className="flex h-11 w-11 items-center justify-center rounded-2xl border border-neutral-200 bg-white text-slate-500 shadow-sm">
           <Icon name="menu" className="h-5 w-5" />
         </button>
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-[#12395a] to-[#2a86b2] text-base font-black text-white">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-main to-accent text-base font-black text-white">
           A
         </div>
       </div>
 
-      <div className="mx-auto hidden w-full max-w-2xl items-center rounded-2xl border border-slate-200 bg-white px-5 py-4 text-slate-400 shadow-sm md:flex">
+      <div className="mx-auto hidden w-full max-w-2xl items-center rounded-xl border border-neutral-200 bg-white px-4 py-3 text-slate-400 shadow-sm md:flex">
         <Icon name="search" className="h-5 w-5" />
         <span className="ml-4 text-sm font-bold">Search Orders, Products, Customers...</span>
       </div>
 
       <div className="flex items-center gap-3">
-        <button type="button" aria-label="Notifications" className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm">
+        <button type="button" aria-label="Notifications" className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-neutral-200 bg-white text-main shadow-sm">
           <Icon name="bell" className="h-5 w-5" />
-          <span className="absolute right-2 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-black text-white">1</span>
+          <span className="absolute right-2 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[10px] font-black text-white">1</span>
         </button>
-        <div className="flex h-14 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-3 shadow-sm">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 font-black text-white">E</div>
+        <div className="flex h-14 items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-3 shadow-sm">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-main font-black text-white">E</div>
           <div className="hidden pr-1 sm:block">
-            <p className="text-sm font-black text-slate-900">Eyamin</p>
+            <p className="text-sm font-black text-main">Eyamin</p>
             <p className="text-xs font-bold text-slate-400">Admin</p>
           </div>
         </div>
@@ -245,7 +266,7 @@ function Topbar() {
 
 export default function DashboardShell({ activeItem, children, notice }) {
   return (
-    <main className="min-h-screen bg-[#f4f9fc] text-slate-950">
+    <main className="min-h-screen bg-gradient-to-b from-mainSoft/70 via-white to-white text-slate-950">
       <div className="flex min-h-screen">
         <Sidebar activeItem={activeItem} />
         <div className="flex min-w-0 flex-1 flex-col">
@@ -256,12 +277,12 @@ export default function DashboardShell({ activeItem, children, notice }) {
               {notice}
             </div>
           ) : null}
-          <section className="flex-1 px-4 py-8 md:px-8 lg:px-10">{children}</section>
-          <footer className="flex flex-col gap-2 border-t border-slate-200 bg-white px-6 py-6 text-sm font-bold text-slate-500 md:flex-row md:items-center md:justify-between lg:px-10">
+          <section className="flex-1 px-3 py-6 md:px-5 lg:px-6">{children}</section>
+          <footer className="flex flex-col gap-2 border-t border-slate-200 bg-white px-4 py-5 text-sm font-bold text-slate-500 md:flex-row md:items-center md:justify-between lg:px-6">
             <p>Powered by AdminFlow. Copyrights all rights reserved.</p>
             <div className="flex gap-5">
-              <a href="#" className="hover:text-slate-900">Terms</a>
-              <a href="#" className="hover:text-slate-900">Policy</a>
+              <a href="#" className="hover:text-main">Terms</a>
+              <a href="#" className="hover:text-main">Policy</a>
             </div>
           </footer>
         </div>
