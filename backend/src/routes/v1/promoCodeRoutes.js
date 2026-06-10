@@ -14,7 +14,12 @@ router.get("/get-promo-codes", protect, adminOnly, getPromoCodes);
 router.post("/post-promo-codes", protect, adminOnly, postPromoCode);
 router.patch("/update-promo-codes/:id", protect, adminOnly, updatePromoCode);
 router.delete("/delete-promo-codes/:id", protect, adminOnly, deletePromoCode);
-router.patch("/active-on-off-promo-codes/:id", protect, adminOnly, togglePromoCodeActive);
+router.patch(
+  "/active-on-off-promo-codes/:id",
+  protect,
+  adminOnly,
+  togglePromoCodeActive
+);
 router.post("/validate-promo-code", protect, validatePromoCode);
 
 module.exports = router;

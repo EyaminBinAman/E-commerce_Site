@@ -8,6 +8,8 @@ const categoryRoutes = require("./categoryRoutes.js");
 const productRoutes = require("./productRoutes.js");
 const animalRoutes = require("./animalRoutes.js");
 const cartRoutes = require("./cartRoutes.js");
+const promoCodeRoutes = require("./promoCodeRoutes.js");
+const bannerRoutes = require("./bannerRoutes.js");
 
 router.use("/users", userRoutes);
 router.use("/brands", brandRoutes);
@@ -16,5 +18,7 @@ router.use("/categories", categoryRoutes);
 router.use("/products", productRoutes);
 router.use("/animals", animalRoutes);
 router.use("/cart", cartRoutes);
+router.use("/promo-codes", promoCodeRoutes);
+router.use("/banners", bannerRoutes);
 
 module.exports = router;
