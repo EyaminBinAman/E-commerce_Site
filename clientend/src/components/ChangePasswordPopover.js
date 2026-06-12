@@ -12,14 +12,17 @@ import {
 
 import Modal from "@/components/ui/modal";
 import { OtpInput } from "@/components/ui/otp-input";
-
-const MOCK_OTP = "123456";
-const MOCK_CURRENT_PASSWORD = "test101";
+import { apiRequest } from "@/lib/api";
 
 export default function ChangePasswordPopover({ open, onClose }) {
   const [step, setStep] = useState("form");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [error, setError] = useState("");
+  const [passwords, setPasswords] = useState({
+    currentPassword: "",
+    newPassword: "",
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -29,12 +32,14 @@ export default function ChangePasswordPopover({ open, onClose }) {
     setStep("form");
     setOtp(["", "", "", "", "", ""]);
     setError("");
+    setPasswords({ currentPassword: "", newPassword: "" });
+    setIsSubmitting(false);
     setShowCurrent(false);
     setShowNew(false);
     setShowConfirm(false);
   }, [open]);
 
-  const handleFormSubmit = (event) => {
+  const handleFormSubmit = async (event) => {
     event.preventDefault();
     setError("");
     const data = new FormData(event.currentTarget);
@@ -42,10 +47,6 @@ export default function ChangePasswordPopover({ open, onClose }) {
     const newPass = String(data.get("newPassword") || "");
     const confirm = String(data.get("confirmPassword") || "");
 
-    if (current !== MOCK_CURRENT_PASSWORD) {
-      setError("Current password is incorrect.");
-      return;
-    }
     if (newPass.length < 6) {
       setError("New password must be at least 6 characters.");
       return;
@@ -54,17 +55,42 @@ export default function ChangePasswordPopover({ open, onClose }) {
       setError("New passwords don't match.");
       return;
     }
-    setStep("otp");
+
+    setIsSubmitting(true);
+    try {
+      await apiRequest("/users/request-update-otp", {
+        method: "POST",
+        body: JSON.stringify({ type: "password" }),
+      });
+      setPasswords({ currentPassword: current, newPassword: newPass });
+      setStep("otp");
+    } catch (error) {
+      setError(error.message || "Could not send OTP.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleOtpVerify = (event) => {
+  const handleOtpVerify = async (event) => {
     event.preventDefault();
     setError("");
-    if (otp.join("") !== MOCK_OTP) {
-      setError("Incorrect OTP. (Hint: 123456 for testing.)");
-      return;
+    setIsSubmitting(true);
+
+    try {
+      await apiRequest("/users/change-password", {
+        method: "PATCH",
+        body: JSON.stringify({
+          code: otp.join(""),
+          currentPassword: passwords.currentPassword,
+          newPassword: passwords.newPassword,
+        }),
+      });
+      setStep("success");
+    } catch (error) {
+      setError(error.message || "Could not change password.");
+    } finally {
+      setIsSubmitting(false);
     }
-    setStep("success");
   };
 
   return (
@@ -113,9 +139,10 @@ export default function ChangePasswordPopover({ open, onClose }) {
                 </button>
                 <button
                   type="submit"
+                  disabled={isSubmitting}
                   className="rounded-xl bg-main px-4 py-2 text-xs font-semibold text-white transition-colors duration-300 hover:bg-mainHover"
                 >
-                  Continue
+                  {isSubmitting ? "Sending OTP..." : "Continue"}
                 </button>
               </div>
             </form>
@@ -127,7 +154,7 @@ export default function ChangePasswordPopover({ open, onClose }) {
             <Header
               icon={HiOutlineShieldCheck}
               title="Verify OTP"
-              description="Enter the 6-digit code we sent to your phone."
+              description="Enter the 6-digit code we sent to your email."
             />
 
             <form
@@ -150,9 +177,10 @@ export default function ChangePasswordPopover({ open, onClose }) {
                 </button>
                 <button
                   type="submit"
+                  disabled={isSubmitting}
                   className="rounded-xl bg-main px-4 py-2 text-xs font-semibold text-white transition-colors duration-300 hover:bg-mainHover"
                 >
-                  Verify
+                  {isSubmitting ? "Verifying..." : "Verify"}
                 </button>
               </div>
             </form>

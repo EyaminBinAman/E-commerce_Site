@@ -9,64 +9,86 @@ import {
   useState,
 } from "react";
 
+import { apiRequest } from "@/lib/api";
+
 const AuthContext = createContext(null);
 
-const STORAGE_KEY = "pawtail.user";
+function normalizeUser(user) {
+  if (!user) {
+    return null;
+  }
 
-const MOCK_USER = {
-  id: "u_test_001",
-  fullName: "Test Pet Parent",
-  username: "petparent",
-  email: "test@ahp.com",
-  phone: "+880 1712-345678",
-  gender: "Prefer not to say",
-  dateOfBirth: "1995-04-12",
-  joinedAt: "2025-08-12",
-};
+  return {
+    ...user,
+    fullName: user.name || user.fullName || "Pet Parent",
+    username:
+      user.username ||
+      user.email?.split("@")[0] ||
+      "petparent",
+    joinedAt: user.createdAt || user.joinedAt || new Date().toISOString(),
+  };
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loaded, setLoaded] = useState(false);
 
+  const refreshUser = useCallback(async () => {
+    try {
+      const data = await apiRequest("/users/me");
+      const nextUser = normalizeUser(data.user);
+      setUser(nextUser);
+      return nextUser;
+    } catch {
+      setUser(null);
+      return null;
+    } finally {
+      setLoaded(true);
+    }
+  }, []);
+
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw) setUser(JSON.parse(raw));
-    } catch {
-      // ignore storage errors (private mode, etc.)
-    }
-    setLoaded(true);
+    refreshUser();
+  }, [refreshUser]);
+
+  const login = useCallback(async (email, password) => {
+    const data = await apiRequest("/users/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+    const nextUser = normalizeUser(data.user);
+    setUser(nextUser);
+    return { ok: true, user: nextUser };
   }, []);
 
-  const login = useCallback((email, password) => {
-    const isValid = email === "test@ahp.com" && password === "test101";
-    if (!isValid) {
-      return {
-        ok: false,
-        error: "Invalid email or password. Try test@ahp.com / test101.",
-      };
-    }
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(MOCK_USER));
-    } catch {
-      // ignore
-    }
-    setUser(MOCK_USER);
-    return { ok: true, user: MOCK_USER };
+  const signup = useCallback(async ({ name, email, phone, password }) => {
+    return apiRequest("/users/signup", {
+      method: "POST",
+      body: JSON.stringify({ name, email, phone, password }),
+    });
   }, []);
 
-  const logout = useCallback(() => {
+  const verifyEmail = useCallback(async ({ email, code }) => {
+    const data = await apiRequest("/users/verify-email", {
+      method: "POST",
+      body: JSON.stringify({ email, code }),
+    });
+    const nextUser = normalizeUser(data.user);
+    setUser(nextUser);
+    return { ok: true, user: nextUser };
+  }, []);
+
+  const logout = useCallback(async () => {
     try {
-      window.localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // ignore
+      await apiRequest("/users/logout", { method: "POST" });
+    } finally {
+      setUser(null);
     }
-    setUser(null);
   }, []);
 
   const value = useMemo(
-    () => ({ user, login, logout, loaded }),
-    [user, login, logout, loaded]
+    () => ({ user, login, signup, verifyEmail, logout, loaded, refreshUser }),
+    [user, login, signup, verifyEmail, logout, loaded, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

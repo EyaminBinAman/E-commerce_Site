@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   HiOutlineEnvelope,
   HiOutlineExclamationCircle,
@@ -41,17 +40,32 @@ const copy = {
     footerCta: "Login",
     footerTarget: "login",
   },
+  verify: {
+    badge: "VERIFY EMAIL",
+    title: "Verification Code",
+    description: "Enter the 6-digit code we sent to your email.",
+    cta: "Verify Account",
+    footerText: "Wrong email?",
+    footerCta: "Sign Up",
+    footerTarget: "signup",
+  },
 };
 
-export default function LoginPopover({ open, onClose, onForgotPassword }) {
-  const { login } = useAuth();
-  const router = useRouter();
+export default function LoginPopover({
+  open,
+  onClose,
+  onForgotPassword,
+  onSuccess,
+}) {
+  const { login, signup, verifyEmail } = useAuth();
 
   const [mode, setMode] = useState("login");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [attemptedEmail, setAttemptedEmail] = useState("");
+  const [verificationEmail, setVerificationEmail] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -74,34 +88,71 @@ export default function LoginPopover({ open, onClose, onForgotPassword }) {
     if (!open) {
       setError("");
       setAttemptedEmail("");
+      setVerificationEmail("");
+      setMode("login");
+      setShowPassword(false);
+      setShowConfirmPassword(false);
+      setIsSubmitting(false);
     }
   }, [open]);
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
+    setIsSubmitting(true);
 
     const data = new FormData(event.currentTarget);
 
-    if (mode === "login") {
-      const email = String(data.get("email") || "").trim();
-      const password = String(data.get("password") || "");
-      const result = login(email, password);
+    try {
+      if (mode === "login") {
+        const email = String(data.get("email") || "").trim();
+        const password = String(data.get("password") || "");
+        await login(email, password);
 
-      if (!result.ok) {
-        setError(result.error);
-        setAttemptedEmail(email);
+        onClose?.();
+        onSuccess?.("Login successful");
         return;
       }
 
-      onClose?.();
-      router.push("/profile");
-      return;
-    }
+      if (mode === "verify") {
+        const code = String(data.get("code") || "").trim();
+        await verifyEmail({ email: verificationEmail, code });
 
-    setError(
-      "Sign up is not connected yet. For testing, switch to Login and use test@ahp.com / test101."
-    );
+        onClose?.();
+        onSuccess?.("Account created successfully");
+        return;
+      }
+
+      const name = String(data.get("username") || "").trim();
+      const email = String(data.get("email") || "").trim();
+      const phoneInput = String(data.get("phone") || "").trim();
+      const password = String(data.get("password") || "");
+      const confirmPassword = String(data.get("confirmPassword") || "");
+
+      if (password !== confirmPassword) {
+        setError("Passwords do not match.");
+        return;
+      }
+
+      const result = await signup({
+        name,
+        email,
+        phone: phoneInput.startsWith("+880") ? phoneInput : `+880${phoneInput}`,
+        password,
+      });
+
+      setVerificationEmail(result.email || email);
+      setAttemptedEmail(result.email || email);
+      setMode("verify");
+    } catch (error) {
+      if (mode === "login") {
+        const email = String(data.get("email") || "").trim();
+        setAttemptedEmail(email);
+      }
+      setError(error.message || "Something went wrong.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const switchMode = (next) => {
@@ -172,9 +223,15 @@ export default function LoginPopover({ open, onClose, onForgotPassword }) {
 
             <p className="mt-1.5 text-sm leading-6 text-neutral-600">
               {active.description}
+              {mode === "verify" && verificationEmail ? (
+                <span className="mt-1 block font-semibold text-main">
+                  {verificationEmail}
+                </span>
+              ) : null}
             </p>
 
-            <div className="mt-4 inline-flex w-fit gap-1 rounded-full bg-neutral-100 p-1">
+            {mode !== "verify" ? (
+              <div className="mt-4 inline-flex w-fit gap-1 rounded-full bg-neutral-100 p-1">
               {tabs.map((tab) => {
                 const isActive = mode === tab.id;
                 return (
@@ -192,13 +249,24 @@ export default function LoginPopover({ open, onClose, onForgotPassword }) {
                   </button>
                 );
               })}
-            </div>
+              </div>
+            ) : null}
 
             <form
               className="mt-4 flex flex-col gap-3"
               onSubmit={handleSubmit}
               noValidate
             >
+              {mode === "verify" ? (
+                <Field
+                  label="Verification Code"
+                  icon={HiOutlineLockClosed}
+                  type="text"
+                  name="code"
+                  placeholder="Enter 6-digit code"
+                />
+              ) : null}
+
               {mode === "signup" ? (
                 <Field
                   label="User Name"
@@ -209,14 +277,15 @@ export default function LoginPopover({ open, onClose, onForgotPassword }) {
                 />
               ) : null}
 
-              <Field
-                label="Email"
-                icon={HiOutlineEnvelope}
-                type="email"
-                name="email"
-                placeholder="Enter your email"
-                defaultValue={mode === "login" ? "test@ahp.com" : ""}
-              />
+              {mode !== "verify" ? (
+                <Field
+                  label="Email"
+                  icon={HiOutlineEnvelope}
+                  type="email"
+                  name="email"
+                  placeholder="Enter your email"
+                />
+              ) : null}
 
               {mode === "signup" ? (
                 <div>
@@ -244,14 +313,15 @@ export default function LoginPopover({ open, onClose, onForgotPassword }) {
                 </div>
               ) : null}
 
-              <PasswordField
-                label="Password"
-                name="password"
-                placeholder="Enter your password"
-                show={showPassword}
-                onToggle={() => setShowPassword((value) => !value)}
-                defaultValue={mode === "login" ? "test101" : ""}
-              />
+              {mode !== "verify" ? (
+                <PasswordField
+                  label="Password"
+                  name="password"
+                  placeholder="Enter your password"
+                  show={showPassword}
+                  onToggle={() => setShowPassword((value) => !value)}
+                />
+              ) : null}
 
               {mode === "signup" ? (
                 <PasswordField
@@ -285,16 +355,22 @@ export default function LoginPopover({ open, onClose, onForgotPassword }) {
 
               <button
                 type="submit"
+                disabled={isSubmitting}
                 className="mt-1 flex h-11 w-full items-center justify-center rounded-xl bg-main text-sm font-semibold text-white transition-colors duration-300 hover:bg-mainHover"
               >
-                {active.cta}
+                {isSubmitting ? "Please wait..." : active.cta}
               </button>
 
               <p className="text-center text-xs text-neutral-600">
                 {active.footerText}{" "}
                 <button
                   type="button"
-                  onClick={() => switchMode(active.footerTarget)}
+                  onClick={() => {
+                    if (active.footerTarget === "signup") {
+                      setVerificationEmail("");
+                    }
+                    switchMode(active.footerTarget);
+                  }}
                   className="font-semibold text-main transition-colors duration-300 hover:text-mainHover"
                 >
                   {active.footerCta}

@@ -11,8 +11,7 @@ import {
 import Modal from "@/components/ui/modal";
 import { OtpInput } from "@/components/ui/otp-input";
 import { useAuth } from "@/context/AuthContext";
-
-const MOCK_OTP = "123456";
+import { apiRequest } from "@/lib/api";
 
 export default function DeleteAccountPopover({ open, onClose }) {
   const { logout } = useAuth();
@@ -21,28 +20,49 @@ export default function DeleteAccountPopover({ open, onClose }) {
   const [step, setStep] = useState("otp");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setStep("otp");
     setOtp(["", "", "", "", "", ""]);
     setError("");
+    setIsSubmitting(true);
+    apiRequest("/users/request-update-otp", {
+      method: "POST",
+      body: JSON.stringify({ type: "delete" }),
+    })
+      .catch((error) => setError(error.message || "Could not send OTP."))
+      .finally(() => setIsSubmitting(false));
   }, [open]);
 
   const handleOtpVerify = (event) => {
     event.preventDefault();
     setError("");
-    if (otp.join("") !== MOCK_OTP) {
-      setError("Incorrect OTP. (Hint: 123456 for testing.)");
+    if (otp.join("").length !== 6) {
+      setError("Enter the 6-digit OTP sent to your email.");
       return;
     }
     setStep("confirm");
   };
 
-  const handleDelete = () => {
-    logout();
-    onClose?.();
-    router.replace("/");
+  const handleDelete = async () => {
+    setError("");
+    setIsSubmitting(true);
+    try {
+      await apiRequest("/users/account", {
+        method: "DELETE",
+        body: JSON.stringify({ code: otp.join("") }),
+      });
+      await logout();
+      onClose?.();
+      router.replace("/");
+    } catch (error) {
+      setError(error.message || "Could not delete account.");
+      setStep("otp");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -81,9 +101,10 @@ export default function DeleteAccountPopover({ open, onClose }) {
                 </button>
                 <button
                   type="submit"
+                  disabled={isSubmitting}
                   className="rounded-xl bg-red-600 px-4 py-2 text-xs font-semibold text-white transition-colors duration-300 hover:bg-red-700"
                 >
-                  Verify
+                  {isSubmitting ? "Sending..." : "Verify"}
                 </button>
               </div>
             </form>
@@ -122,11 +143,13 @@ export default function DeleteAccountPopover({ open, onClose }) {
               <button
                 type="button"
                 onClick={handleDelete}
+                disabled={isSubmitting}
                 className="rounded-xl bg-red-600 px-4 py-2 text-xs font-semibold text-white transition-colors duration-300 hover:bg-red-700"
               >
-                Yes, delete
+                {isSubmitting ? "Deleting..." : "Yes, delete"}
               </button>
             </div>
+            {error ? <ErrorPill text={error} /> : null}
           </>
         ) : null}
       </div>

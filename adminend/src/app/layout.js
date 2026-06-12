@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "AdminFlow Dashboard",
-  description: "Admin order history dashboard",
+  title: "Paw Tail Admin",
+  description: "Paw Tail admin dashboard",
 };
 
 export default function RootLayout({ children }) {

@@ -1,7 +1,4 @@
-"use client";
-
-import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
+import LogoutButton from "@/components/LogoutButton";
 
 const navGroups = [
   {
@@ -321,47 +318,7 @@ function Topbar() {
           <Icon name="bell" className="h-5 w-5" />
           <span className="absolute right-2 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[10px] font-black text-white">1</span>
         </button>
-        <div ref={accountRef} className="relative">
-          <button
-            type="button"
-            onClick={() => setAccountOpen((prev) => !prev)}
-            aria-haspopup="menu"
-            aria-expanded={accountOpen}
-            className="flex h-14 items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-3 shadow-sm transition hover:border-main/20 hover:bg-mainSoft/30"
-          >
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-main font-black text-white">
-              E
-            </div>
-            <div className="hidden pr-1 sm:block">
-              <p className="text-sm font-black text-main">Eyamin</p>
-              <p className="text-xs font-bold text-slate-400">Profile</p>
-            </div>
-          </button>
-
-          {accountOpen ? (
-            <div
-              role="menu"
-              className="absolute right-0 mt-2 w-48 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl shadow-main/10"
-            >
-              <Link
-                href="/dashboard/profile"
-                onClick={() => setAccountOpen(false)}
-                className="flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-600 transition hover:bg-mainSoft hover:text-main"
-              >
-                <Icon name="user" className="h-4 w-4" />
-                My Profile
-              </Link>
-              <Link
-                href="/login"
-                onClick={() => setAccountOpen(false)}
-                className="flex items-center gap-3 border-t border-neutral-100 px-4 py-3 text-sm font-bold text-slate-600 transition hover:bg-mainSoft hover:text-main"
-              >
-                <Icon name="log-in" className="h-4 w-4" />
-                Login
-              </Link>
-            </div>
-          ) : null}
-        </div>
+        <LogoutButton />
       </div>
     </header>
   );

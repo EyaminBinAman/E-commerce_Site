@@ -28,14 +28,31 @@ import Container from "@/components/Container";
 import DeleteAccountPopover from "@/components/DeleteAccountPopover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/context/AuthContext";
+import { API_BASE_URL, apiRequest } from "@/lib/api";
 import {
   formatBDT,
   getInitials,
-  mockAddresses,
-  mockOrders,
-  mockWishlist,
   statusStyles,
 } from "@/lib/profileMock";
+
+const getImageUrl = (src) => {
+  if (!src) return null;
+  if (src.startsWith("http")) return src;
+  return `${API_BASE_URL.replace("/api/v1", "")}${src}`;
+};
+
+const normalizeOrder = (order) => ({
+  id: order.orderNumber || order._id,
+  date: new Date(order.createdAt).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }),
+  status: order.orderStatus || "Pending",
+  itemsCount: order.items?.reduce((total, item) => total + item.quantity, 0) || 0,
+  total: order.grandTotal || 0,
+  products: order.items?.map((item) => item.productName) || [],
+});
 
 const sections = [
   { id: "overview", label: "Overview", icon: HiOutlineSquares2X2 },
@@ -49,7 +66,7 @@ const sections = [
 const validTabs = new Set(sections.map((section) => section.id));
 
 export default function ProfilePage() {
-  const { user, logout, loaded } = useAuth();
+  const { user, logout, loaded, refreshUser } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -57,12 +74,39 @@ export default function ProfilePage() {
   const [active, setActive] = useState(
     initialTab && validTabs.has(initialTab) ? initialTab : "overview"
   );
+  const [orders, setOrders] = useState([]);
+  const [wishlist, setWishlist] = useState([]);
+  const [dataLoading, setDataLoading] = useState(true);
+  const [pageMessage, setPageMessage] = useState("");
 
   useEffect(() => {
     if (loaded && !user) {
       router.replace("/");
     }
   }, [loaded, user, router]);
+
+  const refreshProfileData = async () => {
+    if (!user) return;
+
+    setDataLoading(true);
+    try {
+      const [ordersData, wishlistData] = await Promise.all([
+        apiRequest("/orders/my-orders").catch(() => ({ orders: [] })),
+        apiRequest("/wishlist/get-wishlist").catch(() => ({
+          wishlist: { items: [] },
+        })),
+      ]);
+
+      setOrders((ordersData.orders || []).map(normalizeOrder));
+      setWishlist(wishlistData.wishlist?.items || []);
+    } finally {
+      setDataLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refreshProfileData();
+  }, [user?.id]);
 
   if (!loaded) return <ProfileInlineSkeleton />;
   if (!user) return null;
@@ -86,13 +130,45 @@ export default function ProfilePage() {
 
           <div className="rounded-3xl border border-neutral-200 bg-white p-6 shadow-sm sm:p-8">
             {active === "overview" && (
-              <Overview user={user} onNavigate={setActive} />
+              <Overview
+                user={user}
+                orders={orders}
+                wishlist={wishlist}
+                isLoading={dataLoading}
+                onNavigate={setActive}
+              />
             )}
-            {active === "personal" && <PersonalInfo user={user} />}
-            {active === "addresses" && <Addresses />}
-            {active === "orders" && <Orders />}
-            {active === "wishlist" && <Wishlist />}
+            {active === "personal" && (
+              <PersonalInfo
+                user={user}
+                onUserUpdated={refreshUser}
+                onMessage={setPageMessage}
+              />
+            )}
+            {active === "addresses" && (
+              <Addresses
+                addresses={user.address || []}
+                user={user}
+                onUserUpdated={refreshUser}
+                onMessage={setPageMessage}
+              />
+            )}
+            {active === "orders" && (
+              <Orders orders={orders} isLoading={dataLoading} />
+            )}
+            {active === "wishlist" && (
+              <Wishlist
+                items={wishlist}
+                isLoading={dataLoading}
+                onRefresh={refreshProfileData}
+              />
+            )}
             {active === "settings" && <Settings />}
+            {pageMessage ? (
+              <p className="mt-5 rounded-2xl bg-mainSoft px-4 py-3 text-sm font-semibold text-main">
+                {pageMessage}
+              </p>
+            ) : null}
           </div>
         </div>
       </Container>
@@ -159,9 +235,17 @@ function ProfileHeader({ user, onEdit }) {
     <div className="rounded-3xl border border-neutral-200 bg-white p-5 shadow-sm sm:p-6">
       <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
         <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center">
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-accent text-xl font-extrabold text-main shadow-sm sm:h-18 sm:w-18">
-            {getInitials(user.fullName)}
-          </div>
+          {user.profilePic ? (
+            <img
+              src={getImageUrl(user.profilePic)}
+              alt={user.fullName}
+              className="h-16 w-16 shrink-0 rounded-2xl object-cover shadow-sm sm:h-18 sm:w-18"
+            />
+          ) : (
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-accent text-xl font-extrabold text-main shadow-sm sm:h-18 sm:w-18">
+              {getInitials(user.fullName)}
+            </div>
+          )}
 
           <div className="flex flex-col items-center gap-1 text-center sm:items-start sm:text-left">
             <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
@@ -258,34 +342,36 @@ function SectionHeading({ title, description, action }) {
   );
 }
 
-function Overview({ user, onNavigate }) {
+function Overview({ user, orders, wishlist, isLoading, onNavigate }) {
   const stats = useMemo(
     () => [
       {
         label: "Total Orders",
-        value: mockOrders.length,
+        value: orders.length,
         icon: HiOutlineShoppingBag,
         tone: "main",
       },
       {
         label: "In Progress",
-        value: mockOrders.filter((order) =>
-          ["Processing", "In Transit"].includes(order.status)
+        value: orders.filter((order) =>
+          ["Pending", "Confirmed", "Processing", "Shipped"].includes(
+            order.status
+          )
         ).length,
         icon: HiOutlineShoppingCart,
         tone: "accent",
       },
       {
         label: "Saved Items",
-        value: mockWishlist.length,
+        value: wishlist.length,
         icon: HiOutlineHeart,
         tone: "main",
       },
     ],
-    []
+    [orders, wishlist]
   );
 
-  const recent = mockOrders.slice(0, 3);
+  const recent = orders.slice(0, 3);
 
   return (
     <div className="flex flex-col gap-6">
@@ -331,9 +417,17 @@ function Overview({ user, onNavigate }) {
           </button>
         </div>
         <div className="mt-3 flex flex-col gap-3">
-          {recent.map((order) => (
-            <OrderRow key={order.id} order={order} compact />
-          ))}
+          {isLoading ? (
+            <p className="rounded-2xl border border-dashed border-neutral-200 p-6 text-center text-sm text-neutral-500">
+              Loading recent orders...
+            </p>
+          ) : recent.length ? (
+            recent.map((order) => <OrderRow key={order.id} order={order} compact />)
+          ) : (
+            <p className="rounded-2xl border border-dashed border-neutral-200 p-6 text-center text-sm text-neutral-500">
+              You have not placed any orders yet.
+            </p>
+          )}
         </div>
       </div>
 
@@ -371,27 +465,129 @@ function QuickAction({ icon: Icon, label, onClick }) {
   );
 }
 
-function PersonalInfo({ user }) {
+function PersonalInfo({ user, onUserUpdated, onMessage }) {
+  const [error, setError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [pendingPhone, setPendingPhone] = useState("");
+  const [phoneCode, setPhoneCode] = useState("");
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setError("");
+    setIsSaving(true);
+
+    const data = new FormData(event.currentTarget);
+
+    try {
+      await apiRequest("/users/profile", {
+        method: "PATCH",
+        body: JSON.stringify({
+          name: String(data.get("name") || "").trim(),
+        }),
+      });
+
+      const nextPhone = String(data.get("phone") || "").trim();
+      if (nextPhone && nextPhone !== (user.phone || "")) {
+        await apiRequest("/users/request-update-otp", {
+          method: "POST",
+          body: JSON.stringify({ type: "phone" }),
+        });
+        setPendingPhone(nextPhone);
+        onMessage("OTP sent to your email to confirm phone change");
+      } else {
+        await onUserUpdated();
+        onMessage("Profile updated successfully");
+      }
+    } catch (error) {
+      setError(error.message || "Could not update profile.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handlePhoneVerify = async (event) => {
+    event.preventDefault();
+    setError("");
+    setIsSaving(true);
+
+    try {
+      await apiRequest("/users/update-phone", {
+        method: "PATCH",
+        body: JSON.stringify({
+          phone: pendingPhone,
+          code: phoneCode.trim(),
+        }),
+      });
+      await onUserUpdated();
+      setPendingPhone("");
+      setPhoneCode("");
+      onMessage("Phone number updated successfully");
+    } catch (error) {
+      setError(error.message || "Could not update phone.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleImageChange = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setError("");
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append("image", file);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/profile-image`, {
+        method: "PATCH",
+        credentials: "include",
+        body: formData,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.message || "Could not upload image.");
+      }
+      await onUserUpdated();
+      onMessage("Profile image updated successfully");
+    } catch (error) {
+      setError(error.message || "Could not upload image.");
+    } finally {
+      setIsUploading(false);
+      event.target.value = "";
+    }
+  };
+
   return (
-    <div className="flex flex-col gap-6">
+    <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
       <SectionHeading
         title="Personal Information"
         description="Manage how your name, contact, and identity appear on PawTail."
         action={
           <button
-            type="button"
+            type="submit"
+            disabled={isSaving}
             className="flex h-10 items-center gap-2 rounded-xl bg-main px-4 text-xs font-semibold text-white transition-colors duration-300 hover:bg-mainHover"
           >
             <HiOutlinePencil className="text-sm" />
-            Save Changes
+            {isSaving ? "Saving..." : "Save Changes"}
           </button>
         }
       />
 
       <div className="flex flex-col items-start gap-5 rounded-2xl bg-mainSoft/40 p-5 sm:flex-row sm:items-center">
-        <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-accent text-xl font-extrabold text-main">
-          {getInitials(user.fullName)}
-        </div>
+        {user.profilePic ? (
+          <img
+            src={getImageUrl(user.profilePic)}
+            alt={user.fullName}
+            className="h-20 w-20 rounded-2xl object-cover"
+          />
+        ) : (
+          <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-accent text-xl font-extrabold text-main">
+            {getInitials(user.fullName)}
+          </div>
+        )}
         <div className="flex-1">
           <p className="text-sm font-semibold text-neutral-900">
             Profile photo
@@ -400,39 +596,87 @@ function PersonalInfo({ user }) {
             PNG or JPG, at least 200x200 pixels. Max 2MB.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="rounded-xl border border-main bg-white px-4 py-2 text-xs font-semibold text-main transition-colors hover:bg-mainSoft"
-            >
-              Upload new
-            </button>
-            <button
-              type="button"
-              className="rounded-xl border border-neutral-200 px-4 py-2 text-xs font-semibold text-neutral-600 transition-colors hover:border-neutral-400"
-            >
-              Remove
-            </button>
+            <label className="cursor-pointer rounded-xl border border-main bg-white px-4 py-2 text-xs font-semibold text-main transition-colors hover:bg-mainSoft">
+              {isUploading ? "Uploading..." : "Upload new"}
+              <input
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                onChange={handleImageChange}
+                disabled={isUploading}
+              />
+            </label>
           </div>
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="Full Name" defaultValue={user.fullName} />
-        <FormField label="Username" defaultValue={user.username} />
-        <FormField label="Email" type="email" defaultValue={user.email} />
-        <FormField label="Phone" defaultValue={user.phone} />
-        <FormField label="Gender" defaultValue={user.gender} />
+        <FormField label="Full Name" name="name" defaultValue={user.fullName} />
+        <FormField label="Username" defaultValue={user.username} disabled />
+        <FormField label="Email" type="email" defaultValue={user.email} disabled />
+        <FormField label="Phone" name="phone" defaultValue={user.phone} />
         <FormField
-          label="Date of Birth"
-          type="date"
-          defaultValue={user.dateOfBirth}
+          label="Joined"
+          defaultValue={new Date(user.joinedAt).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}
+          disabled
         />
       </div>
-    </div>
+
+      {pendingPhone ? (
+        <div className="rounded-2xl border border-mainSoft bg-mainSoft/40 p-4">
+          <p className="text-sm font-semibold text-main">
+            Enter the OTP sent to your email to change phone to {pendingPhone}.
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <input
+              type="text"
+              value={phoneCode}
+              onChange={(event) => setPhoneCode(event.target.value)}
+              placeholder="6-digit OTP"
+              className="h-11 flex-1 rounded-xl border border-neutral-200 bg-white px-4 text-sm outline-none focus:border-main"
+            />
+            <button
+              type="button"
+              onClick={handlePhoneVerify}
+              disabled={isSaving}
+              className="h-11 rounded-xl bg-main px-4 text-xs font-semibold text-white transition-colors hover:bg-mainHover"
+            >
+              {isSaving ? "Verifying..." : "Verify Phone"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPendingPhone("");
+                setPhoneCode("");
+              }}
+              className="h-11 rounded-xl border border-neutral-200 px-4 text-xs font-semibold text-neutral-700"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {error ? (
+        <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+          {error}
+        </p>
+      ) : null}
+    </form>
   );
 }
 
-function FormField({ label, type = "text", defaultValue }) {
+function FormField({
+  label,
+  name,
+  type = "text",
+  defaultValue,
+  disabled,
+  onChange,
+}) {
   return (
     <div>
       <label className="block text-xs font-semibold text-neutral-800">
@@ -440,14 +684,93 @@ function FormField({ label, type = "text", defaultValue }) {
       </label>
       <input
         type={type}
+        name={name}
         defaultValue={defaultValue}
-        className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-4 text-sm text-neutral-800 outline-none transition-colors duration-300 focus:border-main"
+        onChange={onChange ? (event) => onChange(event.target.value) : undefined}
+        disabled={disabled}
+        className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-4 text-sm text-neutral-800 outline-none transition-colors duration-300 focus:border-main disabled:bg-neutral-50 disabled:text-neutral-500"
       />
     </div>
   );
 }
 
-function Addresses() {
+const emptyAddress = {
+  label: "Home",
+  name: "",
+  phone: "",
+  line: "",
+  area: "",
+  city: "",
+  postal: "",
+  isDefault: false,
+};
+
+function Addresses({ addresses, user, onUserUpdated, onMessage }) {
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState(null);
+  const [error, setError] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const startAdd = () => {
+    setError("");
+    setEditing("new");
+    setForm({
+      ...emptyAddress,
+      name: user.fullName,
+      phone: user.phone || "",
+      isDefault: !addresses.length,
+    });
+  };
+
+  const startEdit = (address) => {
+    setError("");
+    setEditing(address.id);
+    setForm({ ...emptyAddress, ...address });
+  };
+
+  const handleSave = async (event) => {
+    event.preventDefault();
+    setError("");
+    setIsSaving(true);
+
+    try {
+      const path =
+        editing === "new" ? "/users/addresses" : `/users/addresses/${editing}`;
+      const method = editing === "new" ? "POST" : "PATCH";
+
+      await apiRequest(path, {
+        method,
+        body: JSON.stringify(form),
+      });
+      await onUserUpdated();
+      setEditing(null);
+      setForm(null);
+      onMessage(
+        editing === "new"
+          ? "Address added successfully"
+          : "Address updated successfully"
+      );
+    } catch (error) {
+      setError(error.message || "Could not save address.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (addressId) => {
+    await apiRequest(`/users/addresses/${addressId}`, { method: "DELETE" });
+    await onUserUpdated();
+    onMessage("Address deleted successfully");
+  };
+
+  const handleDefault = async (addressId) => {
+    await apiRequest(`/users/addresses/${addressId}/default`, {
+      method: "PATCH",
+    });
+    await onUserUpdated();
+    onMessage("Default address updated");
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <SectionHeading
@@ -456,6 +779,7 @@ function Addresses() {
         action={
           <button
             type="button"
+            onClick={startAdd}
             className="flex h-10 items-center gap-2 rounded-xl bg-main px-4 text-xs font-semibold text-white transition-colors duration-300 hover:bg-mainHover"
           >
             <HiOutlinePlus className="text-sm" />
@@ -464,8 +788,99 @@ function Addresses() {
         }
       />
 
+      {form ? (
+        <form
+          className="grid gap-4 rounded-2xl border border-mainSoft bg-mainSoft/30 p-5 sm:grid-cols-2"
+          onSubmit={handleSave}
+        >
+          <FormField
+            label="Label"
+            name="label"
+            defaultValue={form.label}
+            onChange={(value) => setForm((current) => ({ ...current, label: value }))}
+          />
+          <FormField
+            label="Receiver Name"
+            name="name"
+            defaultValue={form.name}
+            onChange={(value) => setForm((current) => ({ ...current, name: value }))}
+          />
+          <FormField
+            label="Phone"
+            name="phone"
+            defaultValue={form.phone}
+            onChange={(value) => setForm((current) => ({ ...current, phone: value }))}
+          />
+          <FormField
+            label="City"
+            name="city"
+            defaultValue={form.city}
+            onChange={(value) => setForm((current) => ({ ...current, city: value }))}
+          />
+          <FormField
+            label="Area"
+            name="area"
+            defaultValue={form.area}
+            onChange={(value) => setForm((current) => ({ ...current, area: value }))}
+          />
+          <FormField
+            label="Postal Code"
+            name="postal"
+            defaultValue={form.postal}
+            onChange={(value) => setForm((current) => ({ ...current, postal: value }))}
+          />
+          <div className="sm:col-span-2">
+            <FormField
+              label="Address"
+              name="line"
+              defaultValue={form.line}
+              onChange={(value) => setForm((current) => ({ ...current, line: value }))}
+            />
+          </div>
+          <label className="flex items-center gap-2 text-xs font-semibold text-neutral-700">
+            <input
+              type="checkbox"
+              checked={form.isDefault}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  isDefault: event.target.checked,
+                }))
+              }
+            />
+            Set as default address
+          </label>
+          <div className="flex justify-end gap-2 sm:col-span-2">
+            <button
+              type="button"
+              onClick={() => {
+                setEditing(null);
+                setForm(null);
+                setError("");
+              }}
+              className="rounded-xl border border-neutral-200 px-4 py-2 text-xs font-semibold text-neutral-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="rounded-xl bg-main px-4 py-2 text-xs font-semibold text-white"
+            >
+              {isSaving ? "Saving..." : "Save Address"}
+            </button>
+          </div>
+          {error ? (
+            <p className="rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 sm:col-span-2">
+              {error}
+            </p>
+          ) : null}
+        </form>
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2">
-        {mockAddresses.map((address) => (
+        {addresses.length ? (
+          addresses.map((address) => (
           <div
             key={address.id}
             className="flex flex-col gap-3 rounded-2xl border border-neutral-200 p-5 transition-all duration-300 hover:border-main"
@@ -482,6 +897,7 @@ function Addresses() {
               ) : (
                 <button
                   type="button"
+                  onClick={() => handleDefault(address.id)}
                   className="text-[11px] font-semibold text-main transition-colors hover:text-mainHover"
                 >
                   Set as default
@@ -503,6 +919,7 @@ function Addresses() {
             <div className="mt-1 flex gap-2 border-t border-neutral-100 pt-3">
               <button
                 type="button"
+                onClick={() => startEdit(address)}
                 className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-main transition-colors hover:bg-mainSoft"
               >
                 <HiOutlinePencil className="text-sm" />
@@ -510,6 +927,7 @@ function Addresses() {
               </button>
               <button
                 type="button"
+                onClick={() => handleDelete(address.id)}
                 className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50"
               >
                 <HiOutlineTrash className="text-sm" />
@@ -517,21 +935,34 @@ function Addresses() {
               </button>
             </div>
           </div>
-        ))}
+          ))
+        ) : (
+          <p className="rounded-2xl border border-dashed border-neutral-200 p-8 text-center text-sm text-neutral-500 sm:col-span-2">
+            No saved addresses yet.
+          </p>
+        )}
       </div>
     </div>
   );
 }
 
-const orderFilters = ["All", "Processing", "In Transit", "Delivered", "Cancelled"];
+const orderFilters = [
+  "All",
+  "Pending",
+  "Confirmed",
+  "Processing",
+  "Shipped",
+  "Delivered",
+  "Cancelled",
+];
 
-function Orders() {
+function Orders({ orders, isLoading }) {
   const [filter, setFilter] = useState("All");
 
   const filtered =
     filter === "All"
-      ? mockOrders
-      : mockOrders.filter((order) => order.status === filter);
+      ? orders
+      : orders.filter((order) => order.status === filter);
 
   return (
     <div className="flex flex-col gap-5">
@@ -561,7 +992,11 @@ function Orders() {
       </div>
 
       <div className="flex flex-col gap-3">
-        {filtered.length ? (
+        {isLoading ? (
+          <p className="rounded-2xl border border-dashed border-neutral-200 p-8 text-center text-sm text-neutral-500">
+            Loading your orders...
+          </p>
+        ) : filtered.length ? (
           filtered.map((order) => <OrderRow key={order.id} order={order} />)
         ) : (
           <p className="rounded-2xl border border-dashed border-neutral-200 p-8 text-center text-sm text-neutral-500">
@@ -619,7 +1054,21 @@ function OrderRow({ order, compact = false }) {
   );
 }
 
-function Wishlist() {
+function Wishlist({ items, isLoading, onRefresh }) {
+  const [removingId, setRemovingId] = useState("");
+
+  const handleRemove = async (productId) => {
+    setRemovingId(productId);
+    try {
+      await apiRequest(`/wishlist/remove-wishlist-item/${productId}`, {
+        method: "DELETE",
+      });
+      await onRefresh();
+    } finally {
+      setRemovingId("");
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <SectionHeading
@@ -628,37 +1077,51 @@ function Wishlist() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
-        {mockWishlist.map((item) => (
+        {isLoading ? (
+          <p className="rounded-2xl border border-dashed border-neutral-200 p-8 text-center text-sm text-neutral-500 sm:col-span-2">
+            Loading wishlist...
+          </p>
+        ) : items.length ? (
+          items.map((item) => (
           <div
-            key={item.id}
+            key={item._id}
             className="flex gap-4 rounded-2xl border border-neutral-200 p-4 transition-all duration-300 hover:border-main"
           >
             <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-mainSoft">
-              <PiPawPrintFill className="text-4xl text-main" />
+              {item.image ? (
+                <img
+                  src={getImageUrl(item.image)}
+                  alt={item.name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <PiPawPrintFill className="text-4xl text-main" />
+              )}
             </div>
             <div className="flex flex-1 flex-col justify-between">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-accent">
-                  {item.category}
+                  {item.brand || "Saved item"}
                 </span>
                 <h3 className="mt-1 text-sm font-bold text-neutral-900">
                   {item.name}
                 </h3>
                 <p className="mt-1 text-base font-extrabold text-main">
-                  {formatBDT(item.price)}
+                  {formatBDT(item.discountPrice || item.price)}
                 </p>
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  disabled={!item.inStock}
+                <a
+                  href={`/product/${item.slug}`}
                   className="flex items-center gap-1.5 rounded-xl bg-main px-3 py-1.5 text-xs font-semibold text-white transition-colors duration-300 hover:bg-mainHover disabled:cursor-not-allowed disabled:bg-neutral-300"
                 >
                   <HiOutlineShoppingCart className="text-sm" />
-                  {item.inStock ? "Move to cart" : "Out of stock"}
-                </button>
+                  View product
+                </a>
                 <button
                   type="button"
+                  onClick={() => handleRemove(item._id)}
+                  disabled={removingId === item._id}
                   className="rounded-xl p-1.5 text-neutral-400 transition-colors hover:bg-red-50 hover:text-red-600"
                   aria-label="Remove from wishlist"
                 >
@@ -667,7 +1130,12 @@ function Wishlist() {
               </div>
             </div>
           </div>
-        ))}
+          ))
+        ) : (
+          <p className="rounded-2xl border border-dashed border-neutral-200 p-8 text-center text-sm text-neutral-500 sm:col-span-2">
+            Your wishlist is empty.
+          </p>
+        )}
       </div>
     </div>
   );

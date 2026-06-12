@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 import Container from "@/components/Container";
@@ -15,6 +16,14 @@ const navLinks = [
 
 export default function Navbar() {
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
+  const pathname = usePathname();
+
+  const handleHomeClick = (event) => {
+    if (pathname !== "/") return;
+
+    event.preventDefault();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   return (
     <div className="bg-main text-white">
@@ -65,6 +74,7 @@ export default function Navbar() {
                 <Link
                   key={item.label}
                   href={item.href}
+                  onClick={item.label === "Home" ? handleHomeClick : undefined}
                   className="relative transition-opacity duration-300 hover:opacity-80"
                 >
                   {item.label}
