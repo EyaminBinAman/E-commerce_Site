@@ -115,30 +115,68 @@ const signup = async (req, res, next) => {
       });
     }
 
-    const existingUser = await User.findOne({ email: email.toLowerCase() });
+    const normalizedEmail = email.toLowerCase();
+    const existingUser = await User.findOne({ email: normalizedEmail });
+    const verificationCode = generateVerificationCode();
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
     if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: "User already exists",
+      if (existingUser.isVerified) {
+        return res.status(400).json({
+          success: false,
+          message: "User already exists",
+        });
+      }
+
+      existingUser.name = name;
+      existingUser.phone = phone;
+      existingUser.password = await bcrypt.hash(password, 10);
+      existingUser.otp = verificationCode;
+      existingUser.otpExpiresAt = otpExpiresAt;
+      await existingUser.save();
+
+      try {
+        await sendVerificationEmail(existingUser.email, verificationCode);
+      } catch (mailError) {
+        mailError.statusCode = 502;
+        mailError.message = "Could not send verification email. Please try again.";
+        throw mailError;
+      }
+
+      return res.status(200).json({
+        success: true,
+        requiresVerification: true,
+        email: existingUser.email,
+        message: "Verification code sent to your email",
       });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const verificationCode = generateVerificationCode();
 
-    const user = await User.create({
+    await User.create({
       name,
-      email: email.toLowerCase(),
+      email: normalizedEmail,
       phone,
       password: hashedPassword,
+      isVerified: false,
       otp: verificationCode,
-      otpExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      otpExpiresAt,
     });
 
-    await sendVerificationEmail(user.email, verificationCode);
+    try {
+      await sendVerificationEmail(normalizedEmail, verificationCode);
+    } catch (mailError) {
+      mailError.statusCode = 502;
+      mailError.message = "Could not send verification email. Please try again.";
+      throw mailError;
+    }
 
-    return handleAuthResponse(res, user, 201, "User registered successfully");
+    return res.status(201).json({
+      success: true,
+      requiresVerification: true,
+      email: normalizedEmail,
+      message: "Verification code sent to your email",
+    });
   } catch (error) {
     next(error);
   }
@@ -289,10 +327,7 @@ const verifyEmail = async (req, res, next) => {
     user.otpExpiresAt = null;
     await user.save();
 
-    return res.status(200).json({
-      success: true,
-      message: "Email verified successfully",
-    });
+    return handleAuthResponse(res, user, 200, "Email verified successfully");
   } catch (error) {
     next(error);
   }
@@ -671,6 +706,23 @@ const logout = async (req, res, next) => {
   }
 };
 
+const getCurrentUser = async (req, res) => {
+  const user = req.user;
+
+  return res.status(200).json({
+    success: true,
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      isVerified: user.isVerified,
+      profilePic: user.profilePic,
+    },
+  });
+};
+
 
 
 module.exports = {
@@ -686,4 +738,5 @@ module.exports = {
   changePassword,
   uploadProfileImage,
   logout,
+  getCurrentUser,
 };

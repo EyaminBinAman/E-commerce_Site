@@ -4,8 +4,8 @@
   "description": "Versioned Express backend for the practice e-commerce project",
   "main": "server.js",
   "scripts": {
-    "dev": "nodemon server.js",
-    "start": "node server.js",
+    "dev": "PORT=3000 nodemon server.js",
+    "start": "PORT=3000 node server.js",
     "migrate:variant-ids": "node scripts/addVariantIds.js"
   },
   "keywords": [
