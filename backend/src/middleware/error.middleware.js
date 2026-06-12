@@ -25,6 +25,16 @@ const errorHandler = (error, req, res, next) => {
     message = "Duplicate value already exists";
   }
 
+  if (error.code === "LIMIT_FILE_SIZE") {
+    statusCode = 400;
+    message = "Image is too large. Please upload an image under the size limit.";
+  }
+
+  if (error.message === "Only image files are allowed") {
+    statusCode = 400;
+    message = error.message;
+  }
+
   if (statusCode === 500) {
     message = "Internal server error";
   }

@@ -99,6 +99,9 @@ const handleAuthResponse = async (res, user, statusCode, message) => {
       phone: user.phone,
       role: user.role,
       isVerified: user.isVerified,
+      profilePic: user.profilePic,
+      address: user.address || [],
+      createdAt: user.createdAt,
     },
   });
 };
@@ -487,7 +490,7 @@ const requestUpdateOtp = async (req, res, next) => {
   try {
     const { type } = req.body;
 
-    if (!type || !["phone", "password"].includes(type)) {
+    if (!type || !["phone", "password", "delete"].includes(type)) {
       return res.status(400).json({
         success: false,
         message: "A valid update type is required",
@@ -568,6 +571,9 @@ const updatePhone = async (req, res, next) => {
         phone: user.phone,
         role: user.role,
         isVerified: user.isVerified,
+        profilePic: user.profilePic,
+        address: user.address || [],
+        createdAt: user.createdAt,
       },
     });
   } catch (error) {
@@ -671,6 +677,261 @@ const uploadProfileImage = async (req, res, next) => {
   }
 };
 
+const serializeUser = (user) => ({
+  id: user._id,
+  name: user.name,
+  email: user.email,
+  phone: user.phone,
+  role: user.role,
+  isVerified: user.isVerified,
+  profilePic: user.profilePic,
+  address: user.address || [],
+  createdAt: user.createdAt,
+});
+
+const updateProfile = async (req, res, next) => {
+  try {
+    const { name } = req.body;
+    const user = req.user;
+
+    if (typeof name === "string" && name.trim()) {
+      user.name = name.trim();
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      user: serializeUser(user),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const normalizeAddress = (address, fallbackId) => ({
+  id: address.id || fallbackId || `addr_${Date.now()}`,
+  label: String(address.label || "Home").trim(),
+  name: String(address.name || "").trim(),
+  phone: String(address.phone || "").trim(),
+  line: String(address.line || address.address || "").trim(),
+  area: String(address.area || "").trim(),
+  city: String(address.city || "").trim(),
+  postal: String(address.postal || address.postalCode || "").trim(),
+  isDefault: Boolean(address.isDefault),
+});
+
+const validateAddress = (address) => {
+  const required = ["label", "name", "phone", "line", "area", "city"];
+  return required.every((field) => address[field]);
+};
+
+const addAddress = async (req, res, next) => {
+  try {
+    const user = req.user;
+    const address = normalizeAddress(req.body);
+
+    if (!validateAddress(address)) {
+      return res.status(400).json({
+        success: false,
+        message: "Label, name, phone, address, area, and city are required",
+      });
+    }
+
+    const addresses = user.address || [];
+    if (!addresses.length || address.isDefault) {
+      addresses.forEach((item) => {
+        item.isDefault = false;
+      });
+      address.isDefault = true;
+    }
+
+    addresses.push(address);
+    user.address = addresses;
+    user.markModified("address");
+    await user.save();
+
+    return res.status(201).json({
+      success: true,
+      message: "Address added successfully",
+      addresses: user.address,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateAddress = async (req, res, next) => {
+  try {
+    const { addressId } = req.params;
+    const user = req.user;
+    const addresses = user.address || [];
+    const index = addresses.findIndex((address) => address.id === addressId);
+
+    if (index === -1) {
+      return res.status(404).json({
+        success: false,
+        message: "Address not found",
+      });
+    }
+
+    const updatedAddress = normalizeAddress(
+      { ...addresses[index], ...req.body, id: addressId },
+      addressId
+    );
+
+    if (!validateAddress(updatedAddress)) {
+      return res.status(400).json({
+        success: false,
+        message: "Label, name, phone, address, area, and city are required",
+      });
+    }
+
+    if (updatedAddress.isDefault) {
+      addresses.forEach((item) => {
+        item.isDefault = false;
+      });
+    }
+
+    addresses[index] = updatedAddress;
+
+    if (!addresses.some((address) => address.isDefault) && addresses[0]) {
+      addresses[0].isDefault = true;
+    }
+
+    user.address = addresses;
+    user.markModified("address");
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Address updated successfully",
+      addresses: user.address,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const deleteAddress = async (req, res, next) => {
+  try {
+    const { addressId } = req.params;
+    const user = req.user;
+    const addresses = user.address || [];
+    const filtered = addresses.filter((address) => address.id !== addressId);
+
+    if (filtered.length === addresses.length) {
+      return res.status(404).json({
+        success: false,
+        message: "Address not found",
+      });
+    }
+
+    if (filtered.length && !filtered.some((address) => address.isDefault)) {
+      filtered[0].isDefault = true;
+    }
+
+    user.address = filtered;
+    user.markModified("address");
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Address deleted successfully",
+      addresses: user.address,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const setDefaultAddress = async (req, res, next) => {
+  try {
+    const { addressId } = req.params;
+    const user = req.user;
+    const addresses = user.address || [];
+
+    if (!addresses.some((address) => address.id === addressId)) {
+      return res.status(404).json({
+        success: false,
+        message: "Address not found",
+      });
+    }
+
+    user.address = addresses.map((address) => ({
+      ...address,
+      isDefault: address.id === addressId,
+    }));
+    user.markModified("address");
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Default address updated successfully",
+      addresses: user.address,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const deleteAccount = async (req, res, next) => {
+  try {
+    const { code } = req.body;
+    const user = req.user;
+
+    if (!code) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP code is required",
+      });
+    }
+
+    if (!user.otp || !user.otpExpiresAt) {
+      return res.status(400).json({
+        success: false,
+        message: "No OTP found for this request",
+      });
+    }
+
+    if (user.otpExpiresAt.getTime() < Date.now()) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP has expired",
+      });
+    }
+
+    if (user.otp !== code) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    await User.deleteOne({ _id: user._id });
+
+    res.clearCookie("accessToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    });
+
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Account deleted successfully",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Logout controller
 const logout = async (req, res, next) => {
   try {
@@ -711,15 +972,7 @@ const getCurrentUser = async (req, res) => {
 
   return res.status(200).json({
     success: true,
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      role: user.role,
-      isVerified: user.isVerified,
-      profilePic: user.profilePic,
-    },
+    user: serializeUser(user),
   });
 };
 
@@ -737,6 +990,12 @@ module.exports = {
   updatePhone,
   changePassword,
   uploadProfileImage,
+  updateProfile,
+  addAddress,
+  updateAddress,
+  deleteAddress,
+  setDefaultAddress,
+  deleteAccount,
   logout,
   getCurrentUser,
 };
