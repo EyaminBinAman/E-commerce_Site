@@ -1,3 +1,8 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+
 const navGroups = [
   {
     title: "Overview",
@@ -23,10 +28,14 @@ const navGroups = [
   {
     title: "Marketing",
     items: [
-      { label: "Promo Banners", icon: "megaphone", href: "#" },
-      { label: "Promo Codes", icon: "tag", href: "#" },
-      { label: "Delivery Charges", icon: "card", href: "#" },
+      { label: "Promo Codes", icon: "ticket", href: "/dashboard/promo-codes" },
+      { label: "Promo Banners", icon: "image", href: "/dashboard/banners" },
+      { label: "Reviews & Replies", icon: "star", href: "/dashboard/reviews" },
     ],
+  },
+  {
+    title: "Account",
+    items: [],
   },
 ];
 
@@ -140,6 +149,41 @@ export function Icon({ name, className = "h-5 w-5" }) {
         <path d="M7 15v4a2 2 0 0 0 2 2h1" />
       </>
     ),
+    ticket: (
+      <>
+        <path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4z" />
+        <path d="M12 7v10" />
+      </>
+    ),
+    image: (
+      <>
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <path d="m7 13 3-3 4 4 2-2 3 3" />
+        <circle cx="8" cy="9" r="1.2" />
+      </>
+    ),
+    star: (
+      <path d="m12 3 2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z" />
+    ),
+    user: (
+      <>
+        <circle cx="12" cy="8" r="4" />
+        <path d="M4 21a8 8 0 0 1 16 0" />
+      </>
+    ),
+    lock: (
+      <>
+        <rect x="5" y="10" width="14" height="10" rx="2" />
+        <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+      </>
+    ),
+    "log-in": (
+      <>
+        <path d="M10 17H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h5" />
+        <path d="m15 7 5 5-5 5" />
+        <path d="M20 12H9" />
+      </>
+    ),
     trash: (
       <>
         <path d="M3 6h18" />
@@ -159,6 +203,12 @@ export function Icon({ name, className = "h-5 w-5" }) {
       <>
         <path d="M3 21h6" />
         <path d="M14.5 4.5a2.1 2.1 0 0 1 3 3L8 17l-4 1 1-4z" />
+      </>
+    ),
+    send: (
+      <>
+        <path d="m22 2-7 20-4-9-9-4z" />
+        <path d="m22 2-11 11" />
       </>
     ),
   };
@@ -196,7 +246,7 @@ function Sidebar({ activeItem }) {
       </div>
 
       <nav className="mt-8 space-y-6">
-        {navGroups.map((group) => (
+        {navGroups.filter((group) => group.items.length > 0).map((group) => (
           <div key={group.title}>
             <p className="px-2 text-xs font-black uppercase tracking-[0.35em] text-slate-300">{group.title}</p>
             <div className="mt-3 space-y-1.5">
@@ -227,6 +277,31 @@ function Sidebar({ activeItem }) {
 }
 
 function Topbar() {
+  const [accountOpen, setAccountOpen] = useState(false);
+  const accountRef = useRef(null);
+
+  useEffect(() => {
+    const onPointerDown = (event) => {
+      if (accountRef.current && !accountRef.current.contains(event.target)) {
+        setAccountOpen(false);
+      }
+    };
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setAccountOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
   return (
     <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-neutral-200 bg-mainSoft/60 px-3 backdrop-blur md:px-6 lg:px-8">
       <div className="flex items-center gap-3 lg:hidden">
@@ -246,12 +321,47 @@ function Topbar() {
           <Icon name="bell" className="h-5 w-5" />
           <span className="absolute right-2 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[10px] font-black text-white">1</span>
         </button>
-        <button
-          type="button"
-          className="flex h-12 items-center justify-center rounded-2xl border border-neutral-200 bg-white px-5 text-sm font-black text-main shadow-sm transition hover:bg-mainSoft"
-        >
-          Logout
-        </button>
+        <div ref={accountRef} className="relative">
+          <button
+            type="button"
+            onClick={() => setAccountOpen((prev) => !prev)}
+            aria-haspopup="menu"
+            aria-expanded={accountOpen}
+            className="flex h-14 items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-3 shadow-sm transition hover:border-main/20 hover:bg-mainSoft/30"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-main font-black text-white">
+              E
+            </div>
+            <div className="hidden pr-1 sm:block">
+              <p className="text-sm font-black text-main">Eyamin</p>
+              <p className="text-xs font-bold text-slate-400">Profile</p>
+            </div>
+          </button>
+
+          {accountOpen ? (
+            <div
+              role="menu"
+              className="absolute right-0 mt-2 w-48 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-xl shadow-main/10"
+            >
+              <Link
+                href="/dashboard/profile"
+                onClick={() => setAccountOpen(false)}
+                className="flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-600 transition hover:bg-mainSoft hover:text-main"
+              >
+                <Icon name="user" className="h-4 w-4" />
+                My Profile
+              </Link>
+              <Link
+                href="/login"
+                onClick={() => setAccountOpen(false)}
+                className="flex items-center gap-3 border-t border-neutral-100 px-4 py-3 text-sm font-bold text-slate-600 transition hover:bg-mainSoft hover:text-main"
+              >
+                <Icon name="log-in" className="h-4 w-4" />
+                Login
+              </Link>
+            </div>
+          ) : null}
+        </div>
       </div>
     </header>
   );
