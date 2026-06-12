@@ -12,14 +12,24 @@ const Routes = require("./src/routes/index.js");
 const { notFound, errorHandler } = require("./src/middleware/error.middleware");
 
 
-const PORT = Number(process.env.PORT);
+const PORT = Number(process.env.PORT || 3000);
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  process.env.ADMIN_URL,
+].filter(Boolean);
 
 const startServer = async () => {
   try {
     await connectDB();
     app.use(
       cors({
-        origin: process.env.CLIENT_URL,
+        origin: (origin, callback) => {
+          if (!origin || allowedOrigins.includes(origin)) {
+            return callback(null, true);
+          }
+
+          return callback(new Error("Not allowed by CORS"));
+        },
         credentials: true,
       })
     );

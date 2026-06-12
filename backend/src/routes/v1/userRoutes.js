@@ -15,7 +15,9 @@ const {
   changePassword,
   uploadProfileImage,
   logout,
+  getCurrentUser,
 } = require("../../controllers/v1/authController.js");
+const { admin } = require("../../middleware/auth.middleware.js");
 
 const userImageUpload = createImageUpload({ folder: "users", maxSizeKB: 500 });
 
@@ -32,6 +34,7 @@ router.patch("/update-phone", protect, updatePhone);
 router.patch("/change-password", protect, changePassword);
 router.patch("/profile-image",protect,userImageUpload.single("image"),uploadProfileImage);
 router.post("/logout", protect, logout);
+router.get("/me", protect, getCurrentUser);
 
 
 module.exports = router;
