@@ -1,5 +1,5 @@
 import AdminDashboard from "@/components/AdminDashboard";
 
-export default function Home() {
+export default function DashboardPage() {
   return <AdminDashboard />;
 }

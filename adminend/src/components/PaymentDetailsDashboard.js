@@ -15,6 +15,37 @@ const payments = [
   },
 ];
 
+const paymentSummaryCards = [
+  {
+    title: "Total Paid",
+    value: "Tk 0",
+    helper: "Money already received from customers.",
+    accent: "from-emerald-400 to-teal-300",
+    ring: "ring-emerald-100",
+  },
+  {
+    title: "Total Unpaid",
+    value: "Tk 680",
+    helper: "Money not received yet.",
+    accent: "from-rose-500 via-orange-400 to-accent",
+    ring: "ring-orange-100",
+  },
+  {
+    title: "Paid Orders",
+    value: "00",
+    helper: "Orders with cleared payment.",
+    accent: "from-cyan-400 to-sky-300",
+    ring: "ring-cyan-100",
+  },
+  {
+    title: "Unpaid Orders",
+    value: "01",
+    helper: "Orders still waiting for payment.",
+    accent: "from-amber-400 to-orange-300",
+    ring: "ring-amber-100",
+  },
+];
+
 export default function PaymentDetailsDashboard() {
   return (
     <DashboardShell activeItem="Payment Details">
@@ -40,6 +71,20 @@ export default function PaymentDetailsDashboard() {
             className="ml-3 w-full bg-transparent text-sm font-bold text-slate-700 outline-none placeholder:text-slate-300"
           />
         </label>
+      </div>
+
+      <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        {paymentSummaryCards.map((card) => (
+          <article
+            key={card.title}
+            className={`relative min-h-40 overflow-hidden rounded-[24px] border border-neutral-200 bg-white p-6 shadow-lg shadow-main/5 ring-1 ${card.ring}`}
+          >
+            <div className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${card.accent}`} />
+            <p className="text-sm font-extrabold text-slate-500">{card.title}</p>
+            <p className="mt-5 text-3xl font-black tracking-tight text-slate-950">{card.value}</p>
+            <p className="mt-4 text-sm font-semibold leading-6 text-slate-400">{card.helper}</p>
+          </article>
+        ))}
       </div>
 
       <div className="mt-8 overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-lg shadow-main/5">

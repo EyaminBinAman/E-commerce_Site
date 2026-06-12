@@ -2,13 +2,13 @@ const navGroups = [
   {
     title: "Overview",
     items: [
-      { label: "Dashboard", icon: "grid", href: "#" },
+      { label: "Dashboard", icon: "grid", href: "/dashboard" },
       { label: "Invoices", icon: "invoice", href: "#" },
       { label: "Orders", icon: "cart", href: "/dashboard/orders" },
       { label: "Customer Management", icon: "users", href: "/dashboard/customer-management" },
       { label: "Customer Comments", icon: "chat", href: "#" },
       { label: "Payment Details", icon: "card", href: "/dashboard/payment-details" },
-      { label: "Sales Reports", icon: "chart", href: "#" },
+      { label: "Sales Reports", icon: "chart", href: "/dashboard/sales-reports" },
       { label: "Order History", icon: "clock", href: "/dashboard/order-history" },
     ],
   },
@@ -184,17 +184,13 @@ export function Badge({ children, tone }) {
 function Sidebar({ activeItem }) {
   return (
     <aside className="hidden w-60 shrink-0 border-r border-slate-200 bg-white px-4 py-5 lg:block">
-      <div className="flex items-center gap-4">
-        <button type="button" aria-label="Open menu" className="flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 text-slate-500 shadow-sm">
-          <Icon name="menu" className="h-5 w-5" />
-        </button>
+      <div className="flex items-center">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-main to-accent text-lg font-black text-white shadow-lg shadow-main/20">
-            A
+            P
           </div>
           <div>
-            <p className="text-lg font-black text-main">AdminFlow</p>
-            <p className="text-xs font-black uppercase tracking-[0.35em] text-slate-400">Dashboard</p>
+            <p className="text-lg font-black text-main">Paw Tail</p>
           </div>
         </div>
       </div>
@@ -234,12 +230,10 @@ function Topbar() {
   return (
     <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-neutral-200 bg-mainSoft/60 px-3 backdrop-blur md:px-6 lg:px-8">
       <div className="flex items-center gap-3 lg:hidden">
-        <button type="button" aria-label="Open menu" className="flex h-11 w-11 items-center justify-center rounded-2xl border border-neutral-200 bg-white text-slate-500 shadow-sm">
-          <Icon name="menu" className="h-5 w-5" />
-        </button>
         <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-main to-accent text-base font-black text-white">
-          A
+          P
         </div>
+        <p className="text-lg font-black text-main">Paw Tail</p>
       </div>
 
       <div className="mx-auto hidden w-full max-w-2xl items-center rounded-xl border border-neutral-200 bg-white px-4 py-3 text-slate-400 shadow-sm md:flex">
@@ -252,13 +246,12 @@ function Topbar() {
           <Icon name="bell" className="h-5 w-5" />
           <span className="absolute right-2 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[10px] font-black text-white">1</span>
         </button>
-        <div className="flex h-14 items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-3 shadow-sm">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-main font-black text-white">E</div>
-          <div className="hidden pr-1 sm:block">
-            <p className="text-sm font-black text-main">Eyamin</p>
-            <p className="text-xs font-bold text-slate-400">Admin</p>
-          </div>
-        </div>
+        <button
+          type="button"
+          className="flex h-12 items-center justify-center rounded-2xl border border-neutral-200 bg-white px-5 text-sm font-black text-main shadow-sm transition hover:bg-mainSoft"
+        >
+          Logout
+        </button>
       </div>
     </header>
   );
