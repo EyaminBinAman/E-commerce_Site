@@ -1,248 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import DashboardShell, { Icon } from "@/components/DashboardShell";
+import DashboardShell, { Badge, Icon } from "@/components/DashboardShell";
 import { useToast } from "@/components/ui/toast";
-
-const initialProducts = [
-  {
-    id: "PRD-000023",
-    image: "DP",
-    name: "1kg Beef Flavour for Puppy Dogs",
-    brand: "Smart Heart",
-    category: "Dog Food",
-    animal: "Dog",
-    quantity: "1 pack",
-    active: true,
-    offer: true,
-    stockOut: false,
-    buyPrice: "400",
-    sellPrice: "450",
-    discount: "0%",
-    reviews: "8.0/10",
-    updated: "6/9/2026",
-  },
-  {
-    id: "PRD-000012",
-    image: "CF",
-    name: "Chicken Flavour Cat Food",
-    brand: "Smart Heart",
-    category: "Cat Food",
-    animal: "Cat",
-    quantity: "20 pack",
-    active: true,
-    offer: true,
-    stockOut: false,
-    buyPrice: "400",
-    sellPrice: "500",
-    discount: "0%",
-    reviews: "9.0/10",
-    updated: "6/8/2026",
-  },
-  {
-    id: "PRD-000011",
-    image: "RF",
-    name: "1 kg Rabbit Food",
-    brand: "Smart Heart",
-    category: "Rabbit Food",
-    animal: "Rabbit",
-    quantity: "20 pack",
-    active: true,
-    offer: true,
-    stockOut: true,
-    buyPrice: "299.99",
-    sellPrice: "400",
-    discount: "0%",
-    reviews: "8.0/10",
-    updated: "6/5/2026",
-  },
-  {
-    id: "PRD-000010",
-    image: "RB",
-    name: "1kg Rabbit Food",
-    brand: "Jungle",
-    category: "Rabbit Food",
-    animal: "Rabbit",
-    quantity: "20 pack",
-    active: true,
-    offer: true,
-    stockOut: false,
-    buyPrice: "400",
-    sellPrice: "500",
-    discount: "5%",
-    reviews: "6.0/10",
-    updated: "6/9/2026",
-  },
-  {
-    id: "PRD-000009",
-    image: "DF",
-    name: "2kg Adult Dog Food",
-    brand: "Smart Heart",
-    category: "Dog Food",
-    animal: "Dog",
-    quantity: "12 pack",
-    active: true,
-    offer: false,
-    stockOut: false,
-    buyPrice: "520",
-    sellPrice: "610",
-    discount: "2%",
-    reviews: "7.8/10",
-    updated: "6/8/2026",
-  },
-  {
-    id: "PRD-000008",
-    image: "CL",
-    name: "Cat Litter 10L",
-    brand: "Jungle",
-    category: "Cat Litter",
-    animal: "Cat",
-    quantity: "15 pack",
-    active: true,
-    offer: true,
-    stockOut: false,
-    buyPrice: "350",
-    sellPrice: "430",
-    discount: "3%",
-    reviews: "8.5/10",
-    updated: "6/8/2026",
-  },
-  {
-    id: "PRD-000007",
-    image: "BT",
-    name: "Bird Seed Mix",
-    brand: "Smart Heart",
-    category: "Bird Food",
-    animal: "Bird",
-    quantity: "8 pack",
-    active: true,
-    offer: false,
-    stockOut: true,
-    buyPrice: "190",
-    sellPrice: "240",
-    discount: "0%",
-    reviews: "7.2/10",
-    updated: "6/7/2026",
-  },
-  {
-    id: "PRD-000006",
-    image: "RT",
-    name: "Rabbit Treat Pack",
-    brand: "Jungle",
-    category: "Rabbit Food",
-    animal: "Rabbit",
-    quantity: "10 pack",
-    active: true,
-    offer: true,
-    stockOut: false,
-    buyPrice: "260",
-    sellPrice: "320",
-    discount: "5%",
-    reviews: "8.1/10",
-    updated: "6/7/2026",
-  },
-  {
-    id: "PRD-000005",
-    image: "PF",
-    name: "Puppy Starter Food",
-    brand: "Smart Heart",
-    category: "Dog Food",
-    animal: "Dog",
-    quantity: "25 pack",
-    active: true,
-    offer: true,
-    stockOut: false,
-    buyPrice: "410",
-    sellPrice: "490",
-    discount: "4%",
-    reviews: "9.1/10",
-    updated: "6/6/2026",
-  },
-  {
-    id: "PRD-000004",
-    image: "CF",
-    name: "Ocean Fish Cat Food",
-    brand: "Jungle",
-    category: "Cat Food",
-    animal: "Cat",
-    quantity: "16 pack",
-    active: true,
-    offer: false,
-    stockOut: false,
-    buyPrice: "300",
-    sellPrice: "360",
-    discount: "0%",
-    reviews: "7.9/10",
-    updated: "6/6/2026",
-  },
-  {
-    id: "PRD-000003",
-    image: "DG",
-    name: "Dog Biscuit Gravy Mix",
-    brand: "Smart Heart",
-    category: "Dog Treat",
-    animal: "Dog",
-    quantity: "18 pack",
-    active: true,
-    offer: true,
-    stockOut: false,
-    buyPrice: "280",
-    sellPrice: "340",
-    discount: "6%",
-    reviews: "8.8/10",
-    updated: "6/5/2026",
-  },
-  {
-    id: "PRD-000002",
-    image: "RM",
-    name: "Rabbit Mineral Snack",
-    brand: "Jungle",
-    category: "Rabbit Food",
-    animal: "Rabbit",
-    quantity: "6 pack",
-    active: false,
-    offer: false,
-    stockOut: true,
-    buyPrice: "210",
-    sellPrice: "260",
-    discount: "0%",
-    reviews: "7.0/10",
-    updated: "6/4/2026",
-  },
-  {
-    id: "PRD-000001",
-    image: "BD",
-    name: "Bird Daily Feed",
-    brand: "Smart Heart",
-    category: "Bird Food",
-    animal: "Bird",
-    quantity: "14 pack",
-    active: true,
-    offer: false,
-    stockOut: false,
-    buyPrice: "180",
-    sellPrice: "225",
-    discount: "0%",
-    reviews: "7.5/10",
-    updated: "6/3/2026",
-  },
-];
+import { adminApi } from "@/lib/adminApi";
 
 const ITEMS_PER_PAGE = 10;
 
 function MiniToggle({ on, onToggle, tone = "green" }) {
   const toneStyles = {
-    green: on
-      ? "border-main/30 bg-mainSoft"
-      : "border-red-200 bg-red-100",
-    yellow: on
-      ? "border-amber-300 bg-amber-100"
-      : "border-red-200 bg-red-100",
-    gray: on
-      ? "border-slate-300 bg-slate-100"
-      : "border-red-200 bg-red-100",
+    green: on ? "border-main/30 bg-mainSoft" : "border-red-200 bg-red-100",
+    yellow: on ? "border-amber-300 bg-amber-100" : "border-red-200 bg-red-100",
   };
 
   return (
@@ -264,51 +34,140 @@ function MiniToggle({ on, onToggle, tone = "green" }) {
   );
 }
 
+function normalizeProduct(product) {
+  const categoryName = product.category?.name || "Uncategorized";
+  const brandName = product.brand?.name || "No brand";
+  const imageLabel = (product.images?.[0] || product.name || "PR").slice(0, 2).toUpperCase();
+
+  return {
+    id: product._id,
+    slug: product.slug,
+    imageLabel,
+    name: product.name,
+    brand: brandName,
+    category: categoryName,
+    stockQuantity: product.stockQuantity ?? 0,
+    isActive: !!product.isActive,
+    isOfferEnabled: !!product.isOfferEnabled,
+    isOutOfStock: !!product.isOutOfStock,
+    price: product.price ?? 0,
+    discountPrice: product.discountPrice,
+    discountPercentage: product.discountPercentage ?? 0,
+    updatedAt: product.updatedAt,
+  };
+}
+
 export default function ProductListDashboard() {
   const { showToast, confirm } = useToast();
-  const [products, setProducts] = useState(initialProducts);
+  const [products, setProducts] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadProducts() {
+      try {
+        const data = await adminApi("/products/get-products?limit=100");
+        if (alive) {
+          setProducts((data.products || []).map(normalizeProduct));
+        }
+      } catch (error) {
+        showToast({
+          tone: "danger",
+          title: error.message || "Failed to load products.",
+        });
+      } finally {
+        if (alive) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadProducts();
+
+    return () => {
+      alive = false;
+    };
+  }, [showToast]);
+
+  const filteredProducts = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) {
+      return products;
+    }
+
+    return products.filter((item) =>
+      [item.name, item.brand, item.category, item.slug]
+        .join(" ")
+        .toLowerCase()
+        .includes(query)
+    );
+  }, [products, search]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / ITEMS_PER_PAGE));
+  const pageProducts = useMemo(() => {
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredProducts.slice(start, start + ITEMS_PER_PAGE);
+  }, [filteredProducts, currentPage]);
+
+  const toggleField = (product, field, value) => {
+    adminApi(`/products/update-product/${product.slug}`, {
+      method: "PATCH",
+      body: JSON.stringify({ [field]: value }),
+    })
+      .then((data) => {
+        const updated = normalizeProduct(data.product);
+        setProducts((prev) =>
+          prev.map((item) => (item.slug === product.slug ? updated : item))
+        );
+        showToast({ tone: "success", title: "Product updated." });
+      })
+      .catch((error) => {
+        showToast({
+          tone: "danger",
+          title: error.message || "Failed to update product.",
+        });
+      });
+  };
+
+  const confirmDeleteProduct = (product) => {
+    confirm({
+      title: `Delete ${product.name}?`,
+      description: "This will soft delete the product on the backend.",
+      confirmLabel: "Delete",
+      tone: "danger",
+      onConfirm: () => {
+        adminApi(`/products/delete-product/${product.slug}`, {
+          method: "DELETE",
+        })
+          .then(() => {
+            setProducts((prev) =>
+              prev.filter((item) => item.slug !== product.slug)
+            );
+            showToast({ tone: "success", title: "Product deleted." });
+          })
+          .catch((error) => {
+            showToast({
+              tone: "danger",
+              title: error.message || "Failed to delete product.",
+            });
+          });
+      },
+    });
+  };
 
   const totals = useMemo(() => {
-    const outOfStock = products.filter((item) => item.stockOut).length;
-    const lowStock = 1;
     return {
       total: products.length,
-      outOfStock,
-      lowStock,
+      outOfStock: products.filter((item) => item.isOutOfStock).length,
+      featured: products.filter((item) => item.isOfferEnabled).length,
     };
   }, [products]);
 
-  const toggleField = (id, field) => {
-    setProducts((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, [field]: !item[field] } : item
-      )
-    );
-  };
-
-  const totalPages = Math.max(1, Math.ceil(products.length / ITEMS_PER_PAGE));
-  const pageProducts = useMemo(() => {
-    const start = (currentPage - 1) * ITEMS_PER_PAGE;
-    return products.slice(start, start + ITEMS_PER_PAGE);
-  }, [products, currentPage]);
-
   const goToPage = (page) => {
     setCurrentPage(Math.min(totalPages, Math.max(1, page)));
-  };
-
-  const confirmDeleteProduct = (id, name) => {
-    confirm({
-      title: `Delete ${name}?`,
-      description: "This demo will remove it from the list.",
-      confirmLabel: "Confirm",
-      cancelLabel: "Cancel",
-      tone: "danger",
-      onConfirm: () => {
-        setProducts((prev) => prev.filter((item) => item.id !== id));
-        showToast({ tone: "success", title: "Product deleted." });
-      },
-    });
   };
 
   return (
@@ -323,9 +182,7 @@ export default function ProductListDashboard() {
               Product List
             </h1>
             <p className="mt-1.5 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
-              Review product image, name, brand, category, animal, quantity,
-              active state, offer, stock-out, pricing, discount, and actions
-              from one table.
+              Live products from the backend.
             </p>
           </div>
 
@@ -343,7 +200,12 @@ export default function ProductListDashboard() {
             </label>
             <input
               type="search"
-              placeholder="Search by title, brand, category, ID, or SKU"
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setCurrentPage(1);
+              }}
+              placeholder="Search by title, brand, category, or slug"
               className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
             />
           </div>
@@ -355,25 +217,16 @@ export default function ProductListDashboard() {
           <div className="mb-2 h-1.5 rounded-full bg-gradient-to-r from-main to-main/70" />
           <p className="text-sm font-extrabold text-slate-500">Total Products</p>
           <p className="mt-1 text-3xl font-black text-main">{totals.total}</p>
-          <p className="mt-1 text-xs font-semibold text-slate-400">
-            All products currently available in the catalog.
-          </p>
         </article>
         <article className="rounded-[20px] border border-neutral-200 bg-white p-4 shadow-md shadow-main/5 ring-1 ring-accent/20">
           <div className="mb-2 h-1.5 rounded-full bg-gradient-to-r from-accent to-accentSoft" />
           <p className="text-sm font-extrabold text-slate-500">Out of Stock</p>
           <p className="mt-1 text-3xl font-black text-main">{totals.outOfStock}</p>
-          <p className="mt-1 text-xs font-semibold text-slate-400">
-            Products already marked stock out or with zero quantity.
-          </p>
         </article>
         <article className="rounded-[20px] border border-neutral-200 bg-white p-4 shadow-md shadow-main/5 ring-1 ring-amber-200">
           <div className="mb-2 h-1.5 rounded-full bg-gradient-to-r from-amber-400 to-yellow-300" />
-          <p className="text-sm font-extrabold text-slate-500">Low Stock</p>
-          <p className="mt-1 text-3xl font-black text-main">{totals.lowStock}</p>
-          <p className="mt-1 text-xs font-semibold text-slate-400">
-            Products at or below their own low stock threshold.
-          </p>
+          <p className="text-sm font-extrabold text-slate-500">Offers Enabled</p>
+          <p className="mt-1 text-3xl font-black text-main">{totals.featured}</p>
         </article>
       </div>
 
@@ -382,86 +235,93 @@ export default function ProductListDashboard() {
           <table className="w-full table-fixed border-collapse text-left">
             <thead className="bg-mainSoft/30">
               <tr className="border-b border-neutral-100 text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">
-                <th className="w-20 px-2 py-2">Product ID</th>
-                <th className="w-10 px-1 py-2">Image</th>
-                <th className="w-40 px-2 py-2">Product</th>
-                <th className="w-20 px-2 py-2">Brand</th>
-                <th className="w-20 px-2 py-2">Category</th>
-                <th className="w-14 px-2 py-2">Animal</th>
-                <th className="w-16 px-2 py-2">Qty</th>
+                <th className="w-20 px-2 py-2">Product</th>
+                <th className="w-40 px-2 py-2">Brand</th>
+                <th className="w-32 px-2 py-2">Category</th>
+                <th className="w-16 px-2 py-2 text-center">Stock</th>
                 <th className="w-12 px-1 py-2 text-center">Active</th>
                 <th className="w-12 px-1 py-2 text-center">Offer</th>
-                <th className="w-14 px-1 py-2 text-center">Stock</th>
-                <th className="w-16 px-2 py-2">Buy</th>
-                <th className="w-16 px-2 py-2">Sell</th>
-                <th className="w-12 px-2 py-2">Disc.</th>
-                <th className="hidden 2xl:table-cell w-12 px-2 py-2">Review</th>
-                <th className="hidden 2xl:table-cell w-14 px-2 py-2">Update</th>
+                <th className="w-20 px-2 py-2">Price</th>
+                <th className="w-16 px-2 py-2">Updated</th>
                 <th className="w-14 px-1 py-2 text-center">Action</th>
               </tr>
             </thead>
             <tbody>
-              {pageProducts.map((item) => (
-                <tr key={item.id} className="border-b border-neutral-100 last:border-b-0">
-                  <td className="px-2 py-2.5 text-[10px] font-black text-slate-500">{item.id}</td>
-                  <td className="px-1 py-2.5">
-                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-mainSoft text-[8px] font-black text-main">
-                      {item.image}
-                    </span>
-                  </td>
-                  <td className="px-2 py-2.5">
-                    <p className="truncate text-[11px] font-black text-main">{item.name}</p>
-                    <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-400">
-                      {item.category.toUpperCase().replace(/\s+/g, "-")}-{item.id.slice(-4)}
-                    </p>
-                  </td>
-                  <td className="px-2 py-2.5 text-[11px] font-semibold text-slate-600">{item.brand}</td>
-                  <td className="px-2 py-2.5 text-[11px] font-semibold text-slate-600">{item.category}</td>
-                  <td className="px-2 py-2.5 text-[11px] font-semibold text-slate-600">{item.animal}</td>
-                  <td className="px-2 py-2.5 text-[11px] font-black text-slate-700">{item.quantity}</td>
-                  <td className="px-1 py-2.5 text-center">
-                    <MiniToggle on={item.active} onToggle={() => toggleField(item.id, "active")} />
-                  </td>
-                  <td className="px-1 py-2.5 text-center">
-                    <MiniToggle tone="yellow" on={item.offer} onToggle={() => toggleField(item.id, "offer")} />
-                  </td>
-                  <td className="px-1 py-2.5 text-center">
-                    <MiniToggle tone="gray" on={!item.stockOut} onToggle={() => toggleField(item.id, "stockOut")} />
-                  </td>
-                  <td className="px-2 py-2.5 text-[11px] font-semibold text-slate-600">৳ {item.buyPrice}</td>
-                  <td className="px-2 py-2.5 text-[11px] font-black text-main">৳ {item.sellPrice}</td>
-                  <td className="px-2 py-2.5 text-[11px] font-semibold text-slate-600">{item.discount}</td>
-                  <td className="hidden 2xl:table-cell px-2 py-2.5 text-[10px] font-black text-amber-600">{item.reviews}</td>
-                  <td className="hidden 2xl:table-cell px-2 py-2.5 text-[10px] font-semibold text-slate-500">{item.updated}</td>
-                  <td className="px-1 py-2.5">
-                    <div className="flex items-center justify-center gap-1.5">
-                      <Link
-                        href="/dashboard/products/update"
-                        className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-main/20 bg-mainSoft text-main transition hover:bg-mainSoft/70"
-                        aria-label={`Edit ${item.name}`}
-                      >
-                        <Icon name="edit" className="h-3 w-3" />
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => confirmDeleteProduct(item.id, item.name)}
-                        className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-red-100 bg-red-50 text-red-500 transition hover:bg-red-100"
-                        aria-label={`Delete ${item.name}`}
-                      >
-                        <Icon name="trash" className="h-3 w-3" />
-                      </button>
-                    </div>
+              {loading ? (
+                <tr>
+                  <td colSpan={9} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">
+                    Loading products...
                   </td>
                 </tr>
-              ))}
+              ) : pageProducts.length ? (
+                pageProducts.map((item) => (
+                  <tr key={item.id} className="border-b border-neutral-100 last:border-b-0">
+                    <td className="px-2 py-2.5">
+                      <p className="truncate text-[11px] font-black text-main">{item.name}</p>
+                      <p className="mt-0.5 truncate text-[9px] font-semibold text-slate-400">
+                        {item.slug}
+                      </p>
+                    </td>
+                    <td className="px-2 py-2.5 text-[11px] font-semibold text-slate-600">{item.brand}</td>
+                    <td className="px-2 py-2.5 text-[11px] font-semibold text-slate-600">{item.category}</td>
+                    <td className="px-2 py-2.5 text-center text-[11px] font-black text-slate-700">
+                      {item.stockQuantity}
+                    </td>
+                    <td className="px-1 py-2.5 text-center">
+                      <MiniToggle
+                        on={item.isActive}
+                        onToggle={() => toggleField(item, "isActive", !item.isActive)}
+                      />
+                    </td>
+                    <td className="px-1 py-2.5 text-center">
+                      <MiniToggle
+                        tone="yellow"
+                        on={item.isOfferEnabled}
+                        onToggle={() => toggleField(item, "isOfferEnabled", !item.isOfferEnabled)}
+                      />
+                    </td>
+                    <td className="px-2 py-2.5 text-[11px] font-black text-main">
+                      ৳ {item.discountPrice ?? item.price}
+                    </td>
+                    <td className="px-2 py-2.5 text-[10px] font-semibold text-slate-500">
+                      {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : "-"}
+                    </td>
+                    <td className="px-1 py-2.5">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <Link
+                          href={`/dashboard/products/update?slug=${encodeURIComponent(item.slug)}`}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-main/20 bg-mainSoft text-main transition hover:bg-mainSoft/70"
+                          aria-label={`Edit ${item.name}`}
+                        >
+                          <Icon name="edit" className="h-3 w-3" />
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => confirmDeleteProduct(item)}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-md border border-red-100 bg-red-50 text-red-500 transition hover:bg-red-100"
+                          aria-label={`Delete ${item.name}`}
+                        >
+                          <Icon name="trash" className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={9} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">
+                    No products found.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
         <div className="flex items-center justify-between border-t border-neutral-100 px-3 py-2.5">
           <p className="text-[11px] font-semibold text-slate-500">
             Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1}-
-            {Math.min(currentPage * ITEMS_PER_PAGE, products.length)} of{" "}
-            {products.length}
+            {Math.min(currentPage * ITEMS_PER_PAGE, filteredProducts.length)} of{" "}
+            {filteredProducts.length}
           </p>
           <div className="flex items-center gap-1.5">
             <button

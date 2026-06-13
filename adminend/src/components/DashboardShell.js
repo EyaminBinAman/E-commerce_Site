@@ -1,4 +1,4 @@
-import LogoutButton from "@/components/LogoutButton";
+"use client";
 
 const navGroups = [
   {
@@ -7,10 +7,11 @@ const navGroups = [
       { label: "Dashboard", icon: "grid", href: "/dashboard" },
       { label: "Invoices", icon: "invoice", href: "#" },
       { label: "Orders", icon: "cart", href: "/dashboard/orders" },
+      { label: "Sales Report", icon: "chart", href: "/dashboard/sales-report" },
+      { label: "Delivery", icon: "truck", href: "/dashboard/delivery" },
       { label: "Customer Management", icon: "users", href: "/dashboard/customer-management" },
       { label: "Customer Comments", icon: "chat", href: "#" },
       { label: "Payment Details", icon: "card", href: "/dashboard/payment-details" },
-      { label: "Sales Reports", icon: "chart", href: "/dashboard/sales-reports" },
       { label: "Order History", icon: "clock", href: "/dashboard/order-history" },
     ],
   },
@@ -29,10 +30,6 @@ const navGroups = [
       { label: "Promo Banners", icon: "image", href: "/dashboard/banners" },
       { label: "Reviews & Replies", icon: "star", href: "/dashboard/reviews" },
     ],
-  },
-  {
-    title: "Account",
-    items: [],
   },
 ];
 
@@ -208,6 +205,14 @@ export function Icon({ name, className = "h-5 w-5" }) {
         <path d="m22 2-11 11" />
       </>
     ),
+    truck: (
+      <>
+        <path d="M3 7h11v9H3z" />
+        <path d="M14 10h4l3 3v3h-7z" />
+        <circle cx="7" cy="18" r="2" />
+        <circle cx="18" cy="18" r="2" />
+      </>
+    ),
   };
 
   return <svg {...common}>{paths[name]}</svg>;
@@ -274,31 +279,6 @@ function Sidebar({ activeItem }) {
 }
 
 function Topbar() {
-  const [accountOpen, setAccountOpen] = useState(false);
-  const accountRef = useRef(null);
-
-  useEffect(() => {
-    const onPointerDown = (event) => {
-      if (accountRef.current && !accountRef.current.contains(event.target)) {
-        setAccountOpen(false);
-      }
-    };
-
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") {
-        setAccountOpen(false);
-      }
-    };
-
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, []);
-
   return (
     <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-neutral-200 bg-mainSoft/60 px-3 backdrop-blur md:px-6 lg:px-8">
       <div className="flex items-center gap-3 lg:hidden">
@@ -318,7 +298,15 @@ function Topbar() {
           <Icon name="bell" className="h-5 w-5" />
           <span className="absolute right-2 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[10px] font-black text-white">1</span>
         </button>
-        <LogoutButton />
+        <div className="flex h-14 items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-3 shadow-sm">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-main font-black text-white">
+            E
+          </div>
+          <div className="hidden pr-1 sm:block">
+            <p className="text-sm font-black text-main">Eyamin</p>
+            <p className="text-xs font-bold text-slate-400">Profile</p>
+          </div>
+        </div>
       </div>
     </header>
   );

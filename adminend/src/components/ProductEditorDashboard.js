@@ -1,19 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import DashboardShell from "@/components/DashboardShell";
 import { useToast } from "@/components/ui/toast";
+import { adminApi } from "@/lib/adminApi";
 
-const sampleSku = [
-  "DOG-FOOD-3KG-0001",
-  "CAT-LITTER-10L-0005",
-  "CAT-FOOD-1.5KG-0001",
-  "DOG-FOOD-1KG-0003",
-  "CAT-LITTER-5L-0001",
-  "CAT-FOOD-1KG-0005",
-];
+const emptyForm = {
+  name: "",
+  description: "",
+  category: "",
+  brand: "",
+  price: "",
+  discountPrice: "",
+  stockQuantity: "",
+  tags: "",
+  images: "",
+};
 
 function Field({ label, children }) {
   return (
@@ -28,10 +33,127 @@ function Field({ label, children }) {
 
 export default function ProductEditorDashboard({ mode = "create" }) {
   const isUpdate = mode === "update";
+  const searchParams = useSearchParams();
+  const slug = searchParams.get("slug");
   const { showToast } = useToast();
-  const [offerEnabled, setOfferEnabled] = useState(isUpdate);
+  const [form, setForm] = useState(emptyForm);
+  const [loading, setLoading] = useState(isUpdate && !!slug);
+  const [saving, setSaving] = useState(false);
+  const [offerEnabled, setOfferEnabled] = useState(false);
   const [markStockOut, setMarkStockOut] = useState(false);
   const [isActive, setIsActive] = useState(true);
+  const [isFeatured, setIsFeatured] = useState(false);
+
+  useEffect(() => {
+    if (!isUpdate || !slug) {
+      return;
+    }
+
+    adminApi(`/products/get-product/${slug}`)
+      .then((data) => {
+        const product = data.product;
+        if (!product) {
+          throw new Error("Product not found");
+        }
+
+        setForm({
+          name: product.name || "",
+          description: product.description || "",
+          category: product.category?.slug || product.category?.name || "",
+          brand: product.brand?.slug || product.brand?.name || "",
+          price: String(product.price ?? ""),
+          discountPrice: String(product.discountPrice ?? ""),
+          stockQuantity: String(product.stockQuantity ?? ""),
+          tags: (product.tags || []).join(", "),
+          images: (product.images || []).join(", "),
+        });
+        setOfferEnabled(!!product.isOfferEnabled);
+        setMarkStockOut(!!product.isOutOfStock);
+        setIsActive(!!product.isActive);
+        setIsFeatured(!!product.isFeatured);
+      })
+      .catch((error) => {
+        showToast({
+          tone: "danger",
+          title: error.message || "Failed to load product.",
+        });
+      })
+      .finally(() => setLoading(false));
+  }, [isUpdate, slug, showToast]);
+
+  const title = useMemo(
+    () => (isUpdate ? "Update Product" : "Create Product"),
+    [isUpdate]
+  );
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const saveProduct = () => {
+    if (!form.name.trim() || !form.description.trim() || !form.category.trim() || !form.brand.trim()) {
+      showToast({
+        tone: "warning",
+        title: "Name, description, category, and brand are required.",
+      });
+      return;
+    }
+
+    if (!form.price || !form.stockQuantity) {
+      showToast({
+        tone: "warning",
+        title: "Price and stock quantity are required.",
+      });
+      return;
+    }
+
+    setSaving(true);
+
+    const payload = {
+      name: form.name.trim(),
+      description: form.description.trim(),
+      category: form.category.trim(),
+      brand: form.brand.trim(),
+      price: Number(form.price),
+      discountPrice: form.discountPrice ? Number(form.discountPrice) : null,
+      stockQuantity: Number(form.stockQuantity),
+      tags: form.tags,
+      images: form.images,
+      isActive,
+      isFeatured,
+      isOfferEnabled: offerEnabled,
+    };
+
+    if (markStockOut) {
+      payload.stockQuantity = 0;
+    }
+
+    const request = isUpdate && slug
+      ? adminApi(`/products/update-product/${slug}`, {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        })
+      : adminApi("/products/create-product", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+
+    request
+      .then(() => {
+        showToast({
+          tone: "success",
+          title: isUpdate ? "Product updated successfully." : "Product created successfully.",
+        });
+      })
+      .catch((error) => {
+        showToast({
+          tone: "danger",
+          title: error.message || "Failed to save product.",
+        });
+      })
+      .finally(() => setSaving(false));
+  };
 
   return (
     <DashboardShell activeItem="Products">
@@ -48,130 +170,113 @@ export default function ProductEditorDashboard({ mode = "create" }) {
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-4">
           <div className="rounded-[24px] border border-neutral-200 bg-white p-5 shadow-lg shadow-main/5">
-            <Field label="Product Name">
-              <input
-                type="text"
-                placeholder="Premium Puppy Food"
-                defaultValue={isUpdate ? "1kg Beef Flavour for Puppy Dogs" : ""}
-                className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
-              />
-            </Field>
-
-            <div className="mt-4">
-              <Field label="Product Image">
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    className="h-9 rounded-xl bg-main px-3 text-xs font-black text-white transition hover:bg-mainHover"
-                  >
-                    Choose file
-                  </button>
-                  <span className="text-sm font-semibold text-slate-400">
-                    No file chosen
-                  </span>
-                </div>
-              </Field>
-            </div>
-
-            <Field label="Description">
-              <textarea
-                rows={4}
-                placeholder="Describe the product, benefits, ingredients, flavors, or use case."
-                className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
-              />
-            </Field>
-
-            <div className="mt-4 grid gap-3 md:grid-cols-2">
-              <Field label="SKU">
-                <input
-                  type="text"
-                  placeholder="Example: DOG-FOOD-001"
-                  defaultValue={isUpdate ? "DOG-FOOD-3KG-0001" : ""}
-                  list="product-sku-list"
-                  className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
-                />
-                <datalist id="product-sku-list">
-                  {sampleSku.map((item) => (
-                    <option key={item} value={item} />
-                  ))}
-                </datalist>
-              </Field>
-              <Field label="Unit">
-                <select className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-main">
-                  <option>pcs</option>
-                  <option>kg</option>
-                  <option>pack</option>
-                </select>
-              </Field>
-              <Field label="Animal">
-                <select className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-main">
-                  <option>{isUpdate ? "Birds" : "Select an animal first"}</option>
-                  <option>Dog</option>
-                  <option>Cat</option>
-                  <option>Bird</option>
-                  <option>Rabbit</option>
-                </select>
-              </Field>
-              <Field label="Category">
-                <select className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-main">
-                  <option>{isUpdate ? "Dog Food" : "Select a category"}</option>
-                  <option>Dog Food</option>
-                  <option>Cat Food</option>
-                  <option>Rabbit Food</option>
-                </select>
-              </Field>
-              <Field label="Brand">
-                <select className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-main md:col-span-2">
-                  <option>{isUpdate ? "Smart Heart" : "Select a brand"}</option>
-                  <option>Smart Heart</option>
-                  <option>Jungle</option>
-                </select>
-              </Field>
-            </div>
+            <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">
+              Products
+            </p>
+            <h1 className="mt-2 text-2xl font-black tracking-tight text-main md:text-3xl">
+              {title}
+            </h1>
+            <p className="mt-1.5 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
+              {loading ? "Loading product..." : "Connected to the backend product routes."}
+            </p>
           </div>
 
           <div className="rounded-[24px] border border-neutral-200 bg-white p-5 shadow-lg shadow-main/5">
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field label="Quantity">
+            <div className="space-y-4">
+              <Field label="Product Name">
                 <input
-                  type="number"
-                  placeholder="Example: 24"
-                  defaultValue={isUpdate ? 1 : ""}
+                  name="name"
+                  value={form.name}
+                  onChange={handleChange}
+                  type="text"
+                  placeholder="Premium Puppy Food"
                   className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
                 />
               </Field>
-              <Field label="Low Stock Threshold">
-                <input
-                  type="number"
-                  placeholder="5"
-                  defaultValue={isUpdate ? 5 : ""}
-                  className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
+
+              <Field label="Description">
+                <textarea
+                  name="description"
+                  value={form.description}
+                  onChange={handleChange}
+                  rows={4}
+                  placeholder="Describe the product, benefits, ingredients, or use case."
+                  className="w-full rounded-xl border border-neutral-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
                 />
               </Field>
-              <Field label="Discount (%)">
-                <input
-                  type="number"
-                  placeholder="0"
-                  defaultValue={isUpdate ? 0 : ""}
-                  className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
-                />
-              </Field>
-              <Field label="Buy Price">
-                <input
-                  type="number"
-                  placeholder="Example: 38"
-                  defaultValue={isUpdate ? 400 : ""}
-                  className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
-                />
-              </Field>
-              <Field label="Sell Price">
-                <input
-                  type="number"
-                  placeholder="Example: 52"
-                  defaultValue={isUpdate ? 450 : ""}
-                  className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main md:col-span-2"
-                />
-              </Field>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <Field label="Category">
+                  <input
+                    name="category"
+                    value={form.category}
+                    onChange={handleChange}
+                    type="text"
+                    placeholder="Dog Food"
+                    className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
+                  />
+                </Field>
+                <Field label="Brand">
+                  <input
+                    name="brand"
+                    value={form.brand}
+                    onChange={handleChange}
+                    type="text"
+                    placeholder="Smart Heart"
+                    className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
+                  />
+                </Field>
+                <Field label="Price">
+                  <input
+                    name="price"
+                    value={form.price}
+                    onChange={handleChange}
+                    type="number"
+                    placeholder="450"
+                    className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
+                  />
+                </Field>
+                <Field label="Discount Price">
+                  <input
+                    name="discountPrice"
+                    value={form.discountPrice}
+                    onChange={handleChange}
+                    type="number"
+                    placeholder="400"
+                    className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
+                  />
+                </Field>
+                <Field label="Stock Quantity">
+                  <input
+                    name="stockQuantity"
+                    value={form.stockQuantity}
+                    onChange={handleChange}
+                    type="number"
+                    placeholder="24"
+                    className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
+                  />
+                </Field>
+                <Field label="Tags">
+                  <input
+                    name="tags"
+                    value={form.tags}
+                    onChange={handleChange}
+                    type="text"
+                    placeholder="food, puppy, dog"
+                    className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
+                  />
+                </Field>
+                <Field label="Images">
+                  <input
+                    name="images"
+                    value={form.images}
+                    onChange={handleChange}
+                    type="text"
+                    placeholder="/uploads/products/example.png"
+                    className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main md:col-span-2"
+                  />
+                </Field>
+              </div>
             </div>
           </div>
         </div>
@@ -214,6 +319,15 @@ export default function ProductEditorDashboard({ mode = "create" }) {
                 />
                 Product is active
               </label>
+              <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={isFeatured}
+                  onChange={() => setIsFeatured((v) => !v)}
+                  className="h-4 w-4 accent-[#173F31]"
+                />
+                Product is featured
+              </label>
             </div>
           </div>
 
@@ -222,13 +336,9 @@ export default function ProductEditorDashboard({ mode = "create" }) {
               Pricing Note
             </p>
             <ul className="mt-3 space-y-2 text-sm font-semibold leading-6 text-slate-500">
-              <li>Buy price tracks your supplier cost for each product.</li>
-              <li>Sell price is the customer-facing base price before discount.</li>
-              <li>Low Stock Threshold decides when this appears in low stock view.</li>
-              <li>
-                Products can only be active when their animal, category, and
-                brand are active.
-              </li>
+              <li>Category and brand can be entered by name or slug.</li>
+              <li>Product stock out is derived from stock quantity.</li>
+              <li>Images and tags accept comma-separated values.</li>
             </ul>
           </div>
 
@@ -236,17 +346,11 @@ export default function ProductEditorDashboard({ mode = "create" }) {
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                onClick={() =>
-                  showToast({
-                    tone: "success",
-                    title: isUpdate
-                      ? "Product updated successfully."
-                      : "Product created successfully.",
-                  })
-                }
-                className="h-10 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover"
+                onClick={saveProduct}
+                disabled={saving || loading}
+                className="h-10 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {isUpdate ? "Update Product" : "Create Product"}
+                {saving ? "Saving..." : isUpdate ? "Update Product" : "Create Product"}
               </button>
               <Link
                 href="/dashboard/products"
