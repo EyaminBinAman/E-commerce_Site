@@ -30,8 +30,13 @@ const getImageUrl = (src) => {
 };
 
 export default function WishlistPage() {
-  const { wishlistItems, removeFromWishlist, clearWishlist, isReady } =
-    useWishlist();
+  const {
+    wishlistItems,
+    removeFromWishlist,
+    clearWishlist,
+    isLoading,
+    isReady,
+  } = useWishlist();
 
   return (
     <main className="bg-white">
@@ -49,7 +54,7 @@ export default function WishlistPage() {
           {wishlistItems.length ? (
             <button
               type="button"
-              onClick={clearWishlist}
+              onClick={() => clearWishlist().catch(() => undefined)}
               className="inline-flex h-11 items-center justify-center rounded-full border border-neutral-200 px-5 text-sm font-black text-main transition-colors duration-300 hover:border-main hover:bg-main hover:text-white"
             >
               Clear Wishlist
@@ -57,13 +62,13 @@ export default function WishlistPage() {
           ) : null}
         </div>
 
-        {!isReady ? (
+        {!isReady || isLoading ? (
           <div className="mt-8 rounded-lg border border-neutral-200 p-8 text-neutral-600">
             Loading wishlist...
           </div>
         ) : null}
 
-        {isReady && wishlistItems.length === 0 ? (
+        {isReady && !isLoading && wishlistItems.length === 0 ? (
           <div className="mt-8 rounded-lg border border-neutral-200 p-8 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-main/10 text-2xl text-main">
               <HiOutlineHeart />
@@ -83,7 +88,7 @@ export default function WishlistPage() {
           </div>
         ) : null}
 
-        {wishlistItems.length ? (
+        {isReady && wishlistItems.length ? (
           <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
             {wishlistItems.map((item) => {
               const hasDiscount = typeof item.discountPrice === "number";
@@ -130,7 +135,9 @@ export default function WishlistPage() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => removeFromWishlist(item._id)}
+                      onClick={() =>
+                        removeFromWishlist(item._id).catch(() => undefined)
+                      }
                       className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-full border border-neutral-200 px-4 text-sm font-black text-red-600 transition-colors duration-300 hover:border-red-200 hover:bg-red-50"
                     >
                       <HiTrash />

@@ -59,7 +59,11 @@ const isInvalidAnimalId = (id, res) => {
 
 const getAnimals = async (req, res, next) => {
   try {
-    const animals = await Animal.find({ isActive: true }).sort({ createdAt: -1 });
+    const includeInactive = ["1", "true", "yes"].includes(
+      String(req.query.includeInactive || "").toLowerCase()
+    );
+    const filter = includeInactive ? {} : { isActive: true };
+    const animals = await Animal.find(filter).sort({ createdAt: -1 });
 
     return res.status(200).json({
       success: true,

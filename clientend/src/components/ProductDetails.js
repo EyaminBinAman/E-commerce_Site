@@ -148,12 +148,11 @@ export default function ProductDetails({ product, relatedProducts }) {
         productId: product._id,
         variantId: selectedVariant?._id || null,
         quantity,
+        product,
       });
       setCartMessage("Added to cart");
     } catch (error) {
-      setCartMessage(
-        error.status === 401 ? "Login required" : error.message || "Could not add to cart"
-      );
+      setCartMessage(error.message || "Could not add to cart");
     } finally {
       setIsAddingToCart(false);
     }
@@ -162,8 +161,12 @@ export default function ProductDetails({ product, relatedProducts }) {
   const handleToggleWishlist = async () => {
     setWishlistMessage("");
 
-    const added = toggleWishlist(product);
-    setWishlistMessage(added ? "Added to wishlist" : "Removed from wishlist");
+    try {
+      const added = await toggleWishlist(product);
+      setWishlistMessage(added ? "Added to wishlist" : "Removed from wishlist");
+    } catch (error) {
+      setWishlistMessage(error.message || "Could not update wishlist");
+    }
   };
 
   return (

@@ -1,14 +1,139 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import DashboardShell from "@/components/DashboardShell";
+import { getApiBaseUrl } from "@/lib/apiBaseUrl";
 import { useToast } from "@/components/ui/toast";
 
 const suggestedCategories = ["Dog Food", "Dog Litter", "Dog Treat", "Dog Toys"];
+const REQUEST_TIMEOUT_MS = 12000;
+
+const fetchWithTimeout = async (url, options = {}) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const getApiErrorMessage = (error, fallback) => {
+  if (error?.name === "AbortError") {
+    return "Backend request timeout. Please verify backend is running on port 3000.";
+  }
+  return error?.message || fallback;
+};
 
 export default function CreateCategoryDashboard() {
   const { showToast } = useToast();
+  const router = useRouter();
+  const apiBaseUrl = getApiBaseUrl();
+  const searchParams = useSearchParams();
+  const mode = searchParams.get("mode");
+  const editSlug = searchParams.get("slug");
+  const isUpdate = mode === "update" && !!editSlug;
+  const [animals, setAnimals] = useState([]);
+  const [animalName, setAnimalName] = useState("");
+  const [name, setName] = useState("");
+  const [image, setImage] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const loadFormData = async () => {
+      try {
+        const [animalsResponse, categoriesResponse] = await Promise.all([
+          fetchWithTimeout(`${apiBaseUrl}/animals/get-animals?includeInactive=true`, {
+            cache: "no-store",
+          }),
+          isUpdate
+            ? fetchWithTimeout(`${apiBaseUrl}/categories/get-categories?includeInactive=true`, {
+                cache: "no-store",
+              })
+            : Promise.resolve(null),
+        ]);
+
+        const animalsData = await animalsResponse.json();
+        if (!animalsResponse.ok || !animalsData.success) {
+          throw new Error(animalsData.message || "Failed to load animals");
+        }
+        setAnimals(animalsData.animals || []);
+
+        if (isUpdate && categoriesResponse) {
+          const categoriesData = await categoriesResponse.json();
+          if (!categoriesResponse.ok || !categoriesData.success) {
+            throw new Error(categoriesData.message || "Failed to load category details");
+          }
+          const found = (categoriesData.categories || []).find(
+            (item) => item.slug === editSlug
+          );
+          if (!found) {
+            throw new Error("Category not found");
+          }
+          setName(found.name || "");
+          setAnimalName(found.animalName || "");
+          setImage(found.image || "");
+        }
+      } catch (error) {
+        showToast({
+          tone: "danger",
+          title: getApiErrorMessage(error, "Failed loading animals."),
+        });
+      }
+    };
+    loadFormData();
+  }, [isUpdate, editSlug]);
+
+  const handleCreateCategory = async () => {
+    if (!name.trim() || !animalName.trim()) {
+      showToast({
+        tone: "danger",
+        title: "Category name and animal are required.",
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetchWithTimeout(
+        isUpdate
+          ? `${apiBaseUrl}/categories/update-category/${encodeURIComponent(editSlug)}`
+          : `${apiBaseUrl}/categories/create-category`,
+        {
+          method: isUpdate ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: name.trim(),
+            animalName: animalName.trim(),
+            image: image.trim() || null,
+          }),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(
+          data.message || `Failed to ${isUpdate ? "update" : "create"} category`
+        );
+      }
+      showToast({
+        tone: "success",
+        title: `Category ${isUpdate ? "updated" : "created"} successfully.`,
+      });
+      router.push("/dashboard/categories");
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: getApiErrorMessage(error, `${isUpdate ? "Update" : "Create"} failed.`),
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const title = isUpdate ? "Update Category" : "Create Category";
 
   return (
     <DashboardShell activeItem="Categories">
@@ -27,11 +152,12 @@ export default function CreateCategoryDashboard() {
           Categories
         </p>
         <h1 className="mt-2 text-2xl font-black tracking-tight text-main md:text-3xl">
-          Create Category
+          {title}
         </h1>
         <p className="mt-1.5 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
-          Add a category under a selected animal. Categories can be turned on or
-          off and used throughout the admin app.
+          {isUpdate
+            ? "Update category details and animal mapping used across storefront."
+            : "Add a category under a selected animal. Categories can be turned on or off and used throughout the admin app."}
         </p>
       </div>
 
@@ -42,12 +168,17 @@ export default function CreateCategoryDashboard() {
               <label className="block text-xs font-black uppercase tracking-wide text-main/80">
                 Animal
               </label>
-              <select className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-main">
-                <option>Select an animal</option>
-                <option>Dog</option>
-                <option>Cat</option>
-                <option>Bird</option>
-                <option>Rabbit</option>
+              <select
+                value={animalName}
+                onChange={(event) => setAnimalName(event.target.value)}
+                className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none focus:border-main"
+              >
+                <option value="">Select an animal</option>
+                {animals.map((item) => (
+                  <option key={item._id} value={item.name}>
+                    {item.name}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -58,6 +189,8 @@ export default function CreateCategoryDashboard() {
               <input
                 type="text"
                 placeholder="Premium Dog Food"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
                 className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
               />
             </div>
@@ -74,9 +207,16 @@ export default function CreateCategoryDashboard() {
                   Choose file
                 </button>
                 <span className="text-sm font-semibold text-slate-400">
-                  No file chosen
+                  {image ? "Image URL ready" : "No file chosen"}
                 </span>
               </div>
+              <input
+                type="url"
+                placeholder="Optional image URL"
+                value={image}
+                onChange={(event) => setImage(event.target.value)}
+                className="mt-2 h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
+              />
             </div>
 
             <label className="inline-flex items-center gap-2 pt-1 text-sm font-semibold text-slate-600">
@@ -119,15 +259,11 @@ export default function CreateCategoryDashboard() {
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                onClick={() =>
-                  showToast({
-                    tone: "success",
-                    title: "Category created successfully.",
-                  })
-                }
+                disabled={loading}
+                onClick={handleCreateCategory}
                 className="h-10 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover"
               >
-                Create Category
+                {loading ? (isUpdate ? "Updating..." : "Creating...") : title}
               </button>
               <Link
                 href="/dashboard/categories"

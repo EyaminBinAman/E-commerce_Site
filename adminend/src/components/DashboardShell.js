@@ -274,31 +274,6 @@ function Sidebar({ activeItem }) {
 }
 
 function Topbar() {
-  const [accountOpen, setAccountOpen] = useState(false);
-  const accountRef = useRef(null);
-
-  useEffect(() => {
-    const onPointerDown = (event) => {
-      if (accountRef.current && !accountRef.current.contains(event.target)) {
-        setAccountOpen(false);
-      }
-    };
-
-    const onKeyDown = (event) => {
-      if (event.key === "Escape") {
-        setAccountOpen(false);
-      }
-    };
-
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, []);
-
   return (
     <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-neutral-200 bg-mainSoft/60 px-3 backdrop-blur md:px-6 lg:px-8">
       <div className="flex items-center gap-3 lg:hidden">

@@ -60,7 +60,13 @@ export function AuthGate({ children }) {
     };
   }, [isPublicPath, router]);
 
-  const value = useMemo(() => ({ admin, setAdmin }), [admin]);
+  const value = useMemo(
+    () => ({
+      admin,
+      setAdmin,
+    }),
+    [admin]
+  );
 
   if (loading) {
     return (
@@ -84,5 +90,11 @@ export function AuthGate({ children }) {
 }
 
 export function useAdminAuth() {
-  return useContext(AuthContext);
+  const context = useContext(AuthContext);
+
+  if (!context) {
+    return { admin: null, setAdmin: () => {} };
+  }
+
+  return context;
 }

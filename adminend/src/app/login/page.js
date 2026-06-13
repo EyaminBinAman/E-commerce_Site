@@ -3,22 +3,21 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { useAdminAuth } from "@/components/AuthGate";
 import { useToast } from "@/components/ui/toast";
-import { loadAdminSession, saveAdminSession } from "@/lib/adminSession";
-
-const initialForm = {
-  email: "",
-  password: "",
-  remember: true,
-};
+import { loginAdmin } from "@/lib/adminApi";
+import { saveAdminSession } from "@/lib/adminSession";
 
 export default function LoginPage() {
   const router = useRouter();
   const { showToast } = useToast();
-  const [form, setForm] = useState(() => ({
-    ...initialForm,
-    email: loadAdminSession().email || "",
-  }));
+  const { setAdmin } = useAdminAuth();
+  const [form, setForm] = useState({
+    email: "",
+    password: "",
+    remember: true,
+  });
+  const [loading, setLoading] = useState(false);
 
   const handleChange = (event) => {
     const { name, type, checked, value } = event.target;
@@ -28,7 +27,7 @@ export default function LoginPage() {
     }));
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
     if (!form.email.trim() || !form.password.trim()) {
@@ -36,25 +35,48 @@ export default function LoginPage() {
       return;
     }
 
-    const nextSession = {
-      name: form.email.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-      email: form.email.trim().toLowerCase(),
-      title: "Administrator",
-      bio: "Signed in from the admin console.",
-      status: "Active",
-      lastLogin: new Date().toLocaleString("en-GB", {
-        dateStyle: "long",
-        timeStyle: "short",
-      }),
-      initials: form.email
-        .split("@")[0]
-        .slice(0, 2)
-        .toUpperCase(),
-    };
+    setLoading(true);
 
-    saveAdminSession(nextSession);
-    showToast({ tone: "success", title: "Logged in." });
-    router.push("/dashboard/profile");
+    try {
+      const data = await loginAdmin({
+        email: form.email.trim().toLowerCase(),
+        password: form.password,
+      });
+
+      setAdmin(data.user);
+
+      if (form.remember) {
+        saveAdminSession({
+          name: data.user.name || "Admin",
+          email: data.user.email,
+          title: "Administrator",
+          bio: "Signed in from the admin console.",
+          status: "Active",
+          lastLogin: new Date().toLocaleString("en-GB", {
+            dateStyle: "long",
+            timeStyle: "short",
+          }),
+          initials: (data.user.name || data.user.email || "AD")
+            .split(/\s+/)
+            .map((part) => part[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase(),
+        });
+      }
+
+      showToast({ tone: "success", title: "Logged in." });
+      router.replace("/dashboard");
+      router.refresh();
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: "Login failed",
+        description: error.message || "Invalid email or password.",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -130,9 +152,10 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover"
+                disabled={loading}
+                className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Sign in
+                {loading ? "Signing in..." : "Sign in"}
               </button>
             </form>
 

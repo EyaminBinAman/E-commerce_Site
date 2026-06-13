@@ -56,6 +56,7 @@ export default function LoginPopover({
   onClose,
   onForgotPassword,
   onSuccess,
+  description,
 }) {
   const { login, signup, verifyEmail } = useAuth();
 
@@ -166,6 +167,8 @@ export default function LoginPopover({
   };
 
   const active = copy[mode];
+  const activeDescription =
+    mode === "login" && description ? description : active.description;
 
   return (
     <div
@@ -222,7 +225,7 @@ export default function LoginPopover({
             </h1>
 
             <p className="mt-1.5 text-sm leading-6 text-neutral-600">
-              {active.description}
+              {activeDescription}
               {mode === "verify" && verificationEmail ? (
                 <span className="mt-1 block font-semibold text-main">
                   {verificationEmail}

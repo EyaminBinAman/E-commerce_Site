@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   HiOutlineArrowRightOnRectangle,
@@ -27,8 +27,10 @@ import ChangePasswordPopover from "@/components/ChangePasswordPopover";
 import Container from "@/components/Container";
 import DeleteAccountPopover from "@/components/DeleteAccountPopover";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useWishlist } from "@/components/WishlistProvider";
 import { useAuth } from "@/context/AuthContext";
 import { API_BASE_URL, apiRequest } from "@/lib/api";
+import { getMyOrdersFromApi } from "@/lib/orderApi";
 import {
   formatBDT,
   getInitials,
@@ -40,19 +42,6 @@ const getImageUrl = (src) => {
   if (src.startsWith("http")) return src;
   return `${API_BASE_URL.replace("/api/v1", "")}${src}`;
 };
-
-const normalizeOrder = (order) => ({
-  id: order.orderNumber || order._id,
-  date: new Date(order.createdAt).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }),
-  status: order.orderStatus || "Pending",
-  itemsCount: order.items?.reduce((total, item) => total + item.quantity, 0) || 0,
-  total: order.grandTotal || 0,
-  products: order.items?.map((item) => item.productName) || [],
-});
 
 const sections = [
   { id: "overview", label: "Overview", icon: HiOutlineSquares2X2 },
@@ -67,6 +56,8 @@ const validTabs = new Set(sections.map((section) => section.id));
 
 export default function ProfilePage() {
   const { user, logout, loaded, refreshUser } = useAuth();
+  const { wishlistItems, isLoading: wishlistLoading, removeFromWishlist } =
+    useWishlist();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -75,7 +66,6 @@ export default function ProfilePage() {
     initialTab && validTabs.has(initialTab) ? initialTab : "overview"
   );
   const [orders, setOrders] = useState([]);
-  const [wishlist, setWishlist] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [pageMessage, setPageMessage] = useState("");
 
@@ -85,28 +75,45 @@ export default function ProfilePage() {
     }
   }, [loaded, user, router]);
 
-  const refreshProfileData = async () => {
+  const refreshProfileData = useCallback(async () => {
     if (!user) return;
 
     setDataLoading(true);
     try {
-      const [ordersData, wishlistData] = await Promise.all([
-        apiRequest("/orders/my-orders").catch(() => ({ orders: [] })),
-        apiRequest("/wishlist/get-wishlist").catch(() => ({
-          wishlist: { items: [] },
-        })),
-      ]);
-
-      setOrders((ordersData.orders || []).map(normalizeOrder));
-      setWishlist(wishlistData.wishlist?.items || []);
+      const nextOrders = await getMyOrdersFromApi();
+      setOrders(nextOrders);
+    } catch {
+      setOrders([]);
     } finally {
       setDataLoading(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     refreshProfileData();
-  }, [user?.id]);
+  }, [refreshProfileData]);
+
+  useEffect(() => {
+    if (active !== "orders" && active !== "overview") return;
+    refreshProfileData();
+  }, [active, refreshProfileData]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      if (active === "orders" || active === "overview") {
+        refreshProfileData();
+      }
+    };
+
+    window.addEventListener("focus", handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [active, refreshProfileData]);
 
   if (!loaded) return <ProfileInlineSkeleton />;
   if (!user) return null;
@@ -133,8 +140,8 @@ export default function ProfilePage() {
               <Overview
                 user={user}
                 orders={orders}
-                wishlist={wishlist}
-                isLoading={dataLoading}
+                wishlist={wishlistItems}
+                isLoading={dataLoading || wishlistLoading}
                 onNavigate={setActive}
               />
             )}
@@ -154,13 +161,17 @@ export default function ProfilePage() {
               />
             )}
             {active === "orders" && (
-              <Orders orders={orders} isLoading={dataLoading} />
+              <Orders
+                orders={orders}
+                isLoading={dataLoading}
+                onRefresh={refreshProfileData}
+              />
             )}
             {active === "wishlist" && (
               <Wishlist
-                items={wishlist}
-                isLoading={dataLoading}
-                onRefresh={refreshProfileData}
+                items={wishlistItems}
+                isLoading={wishlistLoading}
+                onRemove={removeFromWishlist}
               />
             )}
             {active === "settings" && <Settings />}
@@ -956,8 +967,18 @@ const orderFilters = [
   "Cancelled",
 ];
 
-function Orders({ orders, isLoading }) {
+function Orders({ orders, isLoading, onRefresh }) {
   const [filter, setFilter] = useState("All");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const filtered =
     filter === "All"
@@ -969,6 +990,16 @@ function Orders({ orders, isLoading }) {
       <SectionHeading
         title="My Orders"
         description="Track everything from kibble to grooming kits."
+        action={
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={isLoading || isRefreshing}
+            className="h-10 rounded-xl border border-neutral-200 px-4 text-xs font-semibold text-main transition-colors duration-300 hover:border-main hover:bg-mainSoft disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isRefreshing ? "Refreshing..." : "Refresh"}
+          </button>
+        }
       />
 
       <div className="flex flex-wrap gap-2">
@@ -1032,10 +1063,11 @@ function OrderRow({ order, compact = false }) {
       <div className="flex flex-wrap items-center gap-3">
         <span
           className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${
-            statusStyles[order.status] || "bg-neutral-100 text-neutral-700"
+            statusStyles[order.displayStatus || order.status] ||
+            "bg-neutral-100 text-neutral-700"
           }`}
         >
-          {order.status}
+          {order.displayStatus || order.status}
         </span>
         <span className="text-xs font-medium text-neutral-500">
           {order.itemsCount} {order.itemsCount === 1 ? "item" : "items"}
@@ -1054,16 +1086,13 @@ function OrderRow({ order, compact = false }) {
   );
 }
 
-function Wishlist({ items, isLoading, onRefresh }) {
+function Wishlist({ items, isLoading, onRemove }) {
   const [removingId, setRemovingId] = useState("");
 
   const handleRemove = async (productId) => {
     setRemovingId(productId);
     try {
-      await apiRequest(`/wishlist/remove-wishlist-item/${productId}`, {
-        method: "DELETE",
-      });
-      await onRefresh();
+      await onRemove(productId);
     } finally {
       setRemovingId("");
     }

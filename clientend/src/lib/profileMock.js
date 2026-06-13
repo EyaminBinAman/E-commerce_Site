@@ -137,6 +137,7 @@ export const statusStyles = {
   Confirmed: "bg-sky-100 text-sky-700",
   Delivered: "bg-mainSoft text-main",
   "In Transit": "bg-accent/15 text-accent",
+  Shipping: "bg-accent/15 text-accent",
   Shipped: "bg-accent/15 text-accent",
   Processing: "bg-amber-100 text-amber-700",
   Cancelled: "bg-red-100 text-red-700",

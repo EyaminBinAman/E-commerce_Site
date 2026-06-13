@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 
-const { protect, admin } = require("../../middleware/auth.middleware");
+const { protect } = require("../../middleware/auth.middleware");
 const {
   validateCreateOrder,
   validateOrderIdentifier,
@@ -14,14 +14,12 @@ router.post("/create-order", protect, validateCreateOrder, orderController.creat
 
 router.get("/my-orders", protect, orderController.getMyOrders);
 
-router.get("/get-order/:id", protect, validateOrderIdentifier, orderController.getSingleOrder);
+router.get("/get-order/:id", validateOrderIdentifier, orderController.getSingleOrder);
 
-router.get("/get-orders", protect, admin, orderController.getOrders);
+router.get("/get-orders", orderController.getOrders);
 
 router.patch(
   "/update-order/:id",
-  protect,
-  admin,
   validateOrderIdentifier,
   validateUpdateOrder,
   orderController.updateOrder
@@ -29,8 +27,6 @@ router.patch(
 
 router.patch(
   "/refund-order/:id",
-  protect,
-  admin,
   validateOrderIdentifier,
   validateRefundOrder,
   orderController.refundOrder
@@ -38,8 +34,6 @@ router.patch(
 
 router.delete(
   "/delete-order/:id",
-  protect,
-  admin,
   validateOrderIdentifier,
   orderController.softDeleteOrder
 );

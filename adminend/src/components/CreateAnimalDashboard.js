@@ -1,12 +1,108 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import DashboardShell from "@/components/DashboardShell";
+import { getApiBaseUrl } from "@/lib/apiBaseUrl";
 import { useToast } from "@/components/ui/toast";
+
+const REQUEST_TIMEOUT_MS = 12000;
+
+const fetchWithTimeout = async (url, options = {}) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const getApiErrorMessage = (error, fallback) => {
+  if (error?.name === "AbortError") {
+    return "Backend request timeout. Please verify backend is running on port 3000.";
+  }
+  return error?.message || fallback;
+};
 
 export default function CreateAnimalDashboard() {
   const { showToast } = useToast();
+  const router = useRouter();
+  const apiBaseUrl = getApiBaseUrl();
+  const searchParams = useSearchParams();
+  const mode = searchParams.get("mode");
+  const animalId = searchParams.get("id");
+  const isUpdate = mode === "update" && !!animalId;
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const loadAnimalForEdit = async () => {
+    if (!isUpdate) return;
+    try {
+      const response = await fetchWithTimeout(
+        `${apiBaseUrl}/animals/get-animals?includeInactive=true`,
+        {
+          cache: "no-store",
+        }
+      );
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Failed to load animal details");
+      }
+      const found = (data.animals || []).find((item) => item._id === animalId);
+      if (!found) {
+        throw new Error("Animal not found");
+      }
+      setName(found.name || "");
+    } catch (error) {
+      showToast({ tone: "danger", title: getApiErrorMessage(error, "Load failed.") });
+    }
+  };
+
+  useEffect(() => {
+    loadAnimalForEdit();
+  }, [isUpdate, animalId]);
+
+  const handleCreate = async () => {
+    if (!name.trim()) {
+      showToast({ tone: "danger", title: "Animal name is required." });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetchWithTimeout(
+        isUpdate
+          ? `${apiBaseUrl}/animals/update-animals/${animalId}`
+          : `${apiBaseUrl}/animals/post-animals`,
+        {
+          method: isUpdate ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: name.trim() }),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || `Failed to ${isUpdate ? "update" : "create"} animal`);
+      }
+      showToast({
+        tone: "success",
+        title: `Animal ${isUpdate ? "updated" : "created"} successfully.`,
+      });
+      router.push("/dashboard/categories");
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: getApiErrorMessage(error, `${isUpdate ? "Update" : "Create"} failed.`),
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const title = isUpdate ? "Update Animal" : "Create Animal";
 
   return (
     <DashboardShell activeItem="Categories">
@@ -25,11 +121,12 @@ export default function CreateAnimalDashboard() {
           Animals
         </p>
         <h1 className="mt-2 text-2xl font-black tracking-tight text-main md:text-3xl">
-          Create Animal
+          {title}
         </h1>
         <p className="mt-1.5 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
-          Add a new animal type for catalog organization. You can then attach
-          categories and products to this animal.
+          {isUpdate
+            ? "Update animal details used by category and product mapping."
+            : "Add a new animal type for catalog organization. You can then attach categories and products to this animal."}
         </p>
       </div>
 
@@ -43,17 +140,8 @@ export default function CreateAnimalDashboard() {
               <input
                 type="text"
                 placeholder="Dog"
-                className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-black uppercase tracking-wide text-main/80">
-                Slug
-              </label>
-              <input
-                type="text"
-                placeholder="dog"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
                 className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
               />
             </div>
@@ -98,15 +186,11 @@ export default function CreateAnimalDashboard() {
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                onClick={() =>
-                  showToast({
-                    tone: "success",
-                    title: "Animal created successfully.",
-                  })
-                }
+                disabled={loading}
+                onClick={handleCreate}
                 className="h-10 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover"
               >
-                Create Animal
+                {loading ? (isUpdate ? "Updating..." : "Creating...") : title}
               </button>
               <Link
                 href="/dashboard/categories"
