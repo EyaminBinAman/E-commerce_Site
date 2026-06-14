@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const Animal = require("../../models/Animal");
+const Category = require("../../models/Category");
 
 const createSlug = (name) => {
   return name
@@ -192,6 +193,20 @@ const deleteAnimal = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: "Animal not found",
+      });
+    }
+
+    const linkedCategoryCount = await Category.countDocuments({
+      animalName: {
+        $regex: `^${escapeRegex(animal.name.trim())}$`,
+        $options: "i",
+      },
+    });
+
+    if (linkedCategoryCount > 0) {
+      return res.status(409).json({
+        success: false,
+        message: "Cannot delete animal while categories are assigned to it",
       });
     }
 

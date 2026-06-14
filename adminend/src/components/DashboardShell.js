@@ -1,4 +1,5 @@
 import LogoutButton from "@/components/LogoutButton";
+import BrandLogo from "@/components/BrandLogo";
 
 const navGroups = [
   {
@@ -232,14 +233,7 @@ function Sidebar({ activeItem }) {
   return (
     <aside className="hidden w-60 shrink-0 border-r border-slate-200 bg-white px-4 py-5 lg:block">
       <div className="flex items-center">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-main to-accent text-lg font-black text-white shadow-lg shadow-main/20">
-            P
-          </div>
-          <div>
-            <p className="text-lg font-black text-main">Paw Tail</p>
-          </div>
-        </div>
+        <BrandLogo size="md" />
       </div>
 
       <nav className="mt-8 space-y-6">
@@ -277,10 +271,7 @@ function Topbar() {
   return (
     <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-neutral-200 bg-mainSoft/60 px-3 backdrop-blur md:px-6 lg:px-8">
       <div className="flex items-center gap-3 lg:hidden">
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-main to-accent text-base font-black text-white">
-          P
-        </div>
-        <p className="text-lg font-black text-main">Paw Tail</p>
+        <BrandLogo size="sm" />
       </div>
 
       <div className="mx-auto hidden w-full max-w-2xl items-center rounded-xl border border-neutral-200 bg-white px-4 py-3 text-slate-400 shadow-sm md:flex">
@@ -314,7 +305,7 @@ export default function DashboardShell({ activeItem, children, notice }) {
           ) : null}
           <section className="flex-1 px-3 py-6 md:px-5 lg:px-6">{children}</section>
           <footer className="flex flex-col gap-2 border-t border-slate-200 bg-white px-4 py-5 text-sm font-bold text-slate-500 md:flex-row md:items-center md:justify-between lg:px-6">
-            <p>Powered by AdminFlow. Copyrights all rights reserved.</p>
+            <p>Powered by PawTail . Copyright © 2026 Paw Tail. All rights reserved.</p>
             <div className="flex gap-5">
               <a href="#" className="hover:text-main">Terms</a>
               <a href="#" className="hover:text-main">Policy</a>

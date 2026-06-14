@@ -1,4 +1,5 @@
 const Category = require("../../models/Category");
+const Product = require("../../models/Product");
 const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // GET /get-categories
@@ -133,6 +134,18 @@ const deleteCategoryBySlug = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: "Category not found",
+      });
+    }
+
+    const linkedProductCount = await Product.countDocuments({
+      category: category._id,
+      isDeleted: false,
+    });
+
+    if (linkedProductCount > 0) {
+      return res.status(409).json({
+        success: false,
+        message: "Cannot delete category while products are assigned to it",
       });
     }
 

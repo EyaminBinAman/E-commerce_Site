@@ -223,6 +223,20 @@ export default function CategoryListDashboard() {
   };
 
   const confirmDeleteAnimal = (id, name) => {
+    const hasCategories = categoryRows.some(
+      (item) =>
+        (item.animal || "").trim().toLowerCase() === name.trim().toLowerCase()
+    );
+
+    if (hasCategories) {
+      showToast({
+        tone: "danger",
+        title: "Cannot delete this animal.",
+        description: "Remove or reassign its categories first.",
+      });
+      return;
+    }
+
     confirm({
       title: "Delete this animal?",
       description: "This will soft-delete the animal in backend.",
@@ -256,7 +270,8 @@ export default function CategoryListDashboard() {
   const confirmDeleteCategory = (slug) => {
     confirm({
       title: "Delete this category?",
-      description: "This will soft-delete the category in backend.",
+      description:
+        "This will soft-delete the category in backend. Categories with products cannot be deleted.",
       confirmLabel: "Confirm",
       cancelLabel: "Cancel",
       tone: "danger",

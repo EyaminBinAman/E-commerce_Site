@@ -9,6 +9,8 @@ import {
   filterOrdersByMode,
   getOrdersFromApi,
   orderStatusOptions,
+  paymentStatusOptions,
+  updateOrderPaymentStatusOnApi,
   updateOrderStatusOnApi,
 } from "@/lib/orderApi";
 
@@ -16,14 +18,14 @@ const summaryCards = [
   {
     title: "All Orders",
     value: "00",
-    description: "All paid-delivered and cancelled order records.",
+    description: "All paid and cancelled order records.",
     accent: "from-main to-main/70",
     ring: "ring-main/15",
   },
   {
     title: "Completed Orders",
     value: "00",
-    description: "Delivered orders whose payment is fully cleared.",
+    description: "Orders whose payment has been marked as paid.",
     accent: "from-emerald-400 to-teal-300",
     ring: "ring-emerald-100",
   },
@@ -37,7 +39,7 @@ const summaryCards = [
   {
     title: "Delivered Orders",
     value: "00",
-    description: "All delivered orders whose payment is cleared.",
+    description: "Paid or unpaid orders that reached delivered status.",
     accent: "from-mainHover to-main",
     ring: "ring-main/20",
   },
@@ -126,9 +128,7 @@ function getOrderDashboardCards(orderRows) {
 function getHistorySummaryCards(orderRows) {
   const delivered = orderRows.filter((order) => order.orderStatus === "Delivered").length;
   const cancelled = orderRows.filter((order) => order.orderStatus === "Cancelled").length;
-  const completed = orderRows.filter(
-    (order) => order.orderStatus === "Delivered" && order.billStatus === "Paid"
-  ).length;
+  const completed = orderRows.filter((order) => order.billStatus === "Paid").length;
 
   return summaryCards.map((card) => {
     const values = {
@@ -252,7 +252,9 @@ export default function OrderHistoryDashboard({
   heading = "Order History",
   rowFilter = "all",
   editableStatus = false,
+  editablePayment = false,
   viewBasePath = "",
+  pageDescription = "Review paid and cancelled orders, then open any record for full details.",
 }) {
   const { showToast } = useToast();
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -324,13 +326,47 @@ export default function OrderHistoryDashboard({
     }
   }
 
+  async function handleOrderPaymentChange(order, nextPaymentStatus) {
+    try {
+      const updated = await updateOrderPaymentStatusOnApi(
+        order.mongoId,
+        nextPaymentStatus
+      );
+      setAllOrderRows((currentRows) =>
+        currentRows.map((row) => (row.mongoId === order.mongoId ? updated : row))
+      );
+      setSelectedOrder((currentOrder) =>
+        currentOrder?.mongoId === order.mongoId ? updated : currentOrder
+      );
+
+      if (nextPaymentStatus === "Paid") {
+        showToast({
+          tone: "success",
+          title: `Order ${order.id} marked as paid.`,
+          description: "It has moved to Order History.",
+        });
+        return;
+      }
+
+      showToast({
+        tone: "success",
+        title: `Order ${order.id} marked as unpaid.`,
+      });
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: error.message || "Failed to update payment status.",
+      });
+    }
+  }
+
   return (
     <DashboardShell activeItem={activeItem}>
       <div className="rounded-[28px] border border-neutral-200 bg-white px-6 py-7 shadow-lg shadow-main/5 md:px-8">
         <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">Orders</p>
         <h1 className="mt-3 text-3xl font-black tracking-tight text-main md:text-4xl">{heading}</h1>
         <p className="mt-4 max-w-3xl text-sm font-semibold leading-6 text-slate-400 md:text-base">
-          Review paid-and-delivered orders and cancelled orders, then open any record for full details.
+          {pageDescription}
         </p>
 
         <label className="mt-7 flex h-14 items-center rounded-2xl border border-neutral-200 bg-white px-5 text-slate-400 shadow-inner shadow-main/5">
@@ -386,7 +422,25 @@ export default function OrderHistoryDashboard({
                   </td>
                   <td className="px-8 py-7 text-center">
                     <p className="text-sm font-semibold text-slate-500">{order.payment}</p>
-                    <p className="mt-1 text-xs font-black uppercase tracking-[0.25em] text-slate-400">{order.paymentStatus}</p>
+                    <p className="mt-1 text-xs font-black uppercase tracking-[0.25em] text-slate-400">
+                      {order.billStatus}
+                    </p>
+                    {editablePayment ? (
+                      <select
+                        aria-label={`Update payment for ${order.id}`}
+                        value={order.billStatus === "Paid" ? "Paid" : "Pending"}
+                        onChange={(event) =>
+                          handleOrderPaymentChange(order, event.target.value)
+                        }
+                        className="mt-2 h-9 rounded-xl border border-neutral-200 bg-white px-3 text-xs font-black text-main outline-none transition focus:border-main"
+                      >
+                        {paymentStatusOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
                   </td>
                   <td className="px-8 py-7 text-sm font-black text-slate-800">{order.total}</td>
                   <td className="px-8 py-7">

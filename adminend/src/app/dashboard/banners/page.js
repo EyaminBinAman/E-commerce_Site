@@ -101,7 +101,6 @@ export default function BannersPage() {
   const scrollToCreate = () => {
     setShowCreate(true);
     resetForm();
-    createRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const startEdit = (banner) => {
@@ -152,6 +151,7 @@ export default function BannersPage() {
       }
 
       resetForm();
+      setShowCreate(false);
       await loadBanners();
     } catch (error) {
       showToast({
@@ -207,75 +207,37 @@ export default function BannersPage() {
 
   return (
     <DashboardShell activeItem="Promo Banners">
-      <div className="rounded-[24px] border border-neutral-200 bg-white px-5 py-5 shadow-lg shadow-main/5 md:px-6">
-        <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">
-          Marketing
-        </p>
-        <h1 className="mt-2 text-2xl font-black tracking-tight text-main md:text-3xl">
-          Promo Banners
-        </h1>
-        <p className="mt-1.5 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
-          Upload banner images here. Active hero banners appear on the home carousel;
-          promo banners appear in the deals section.
-        </p>
-      </div>
-
-      <div className="mt-5 grid gap-3 md:grid-cols-2">
-        <Metric
-          title="Active banners"
-          value={summary.active}
-          note="Currently visible on the storefront."
-        />
-        <Metric
-          title="Total banners"
-          value={summary.total}
-          note="All saved banners in the system."
-        />
-      </div>
-
-      <div className="mt-5 space-y-5">
-        <BannerSection
-          title={bannerTypeLabels["hero-banner"]}
-          items={grouped["hero-banner"]}
-          loading={loading}
-          onToggle={toggleBanner}
-          onEdit={startEdit}
-          onDelete={deleteBanner}
-        />
-        <BannerSection
-          title={bannerTypeLabels["promo-banner"]}
-          items={grouped["promo-banner"]}
-          loading={loading}
-          onToggle={toggleBanner}
-          onEdit={startEdit}
-          onDelete={deleteBanner}
-        />
-        <BannerSection
-          title={bannerTypeLabels["slider-banner"]}
-          items={grouped["slider-banner"]}
-          loading={loading}
-          onToggle={toggleBanner}
-          onEdit={startEdit}
-          onDelete={deleteBanner}
-        />
-
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={scrollToCreate}
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover"
-          >
-            <Icon name="send" className="h-4 w-4" />
-            Create banner
-          </button>
+      <div
+        ref={createRef}
+        className="rounded-[24px] border border-neutral-200 bg-white px-5 py-5 shadow-lg shadow-main/5 md:px-6"
+      >
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">
+              Marketing
+            </p>
+            <h1 className="mt-2 text-2xl font-black tracking-tight text-main md:text-3xl">
+              Promo Banners
+            </h1>
+            <p className="mt-1.5 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
+              Upload banner images here. Active hero banners appear on the home carousel;
+              promo banners appear in the deals section.
+            </p>
+          </div>
+          {!showCreate ? (
+            <button
+              type="button"
+              onClick={scrollToCreate}
+              className="inline-flex h-11 shrink-0 items-center gap-2 self-start rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover"
+            >
+              <Icon name="send" className="h-4 w-4" />
+              Create banner
+            </button>
+          ) : null}
         </div>
 
         {showCreate ? (
-          <section
-            ref={createRef}
-            id="create-banner"
-            className="rounded-[24px] border border-neutral-200 bg-white p-5 shadow-lg shadow-main/5"
-          >
+          <section id="create-banner" className="mt-6 border-t border-neutral-100 pt-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">
@@ -285,7 +247,16 @@ export default function BannersPage() {
                   {editingId ? "Update banner entry" : "New banner entry"}
                 </h2>
               </div>
-              <Icon name="image" className="h-6 w-6 text-main/70" />
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreate(false);
+                  resetForm();
+                }}
+                className="inline-flex h-9 items-center rounded-xl border border-neutral-200 px-3 text-xs font-black text-slate-500 transition hover:bg-mainSoft hover:text-main"
+              >
+                Close
+              </button>
             </div>
 
             <form onSubmit={handleSubmit} className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -377,6 +348,46 @@ export default function BannersPage() {
             </form>
           </section>
         ) : null}
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-2">
+        <Metric
+          title="Active banners"
+          value={summary.active}
+          note="Currently visible on the storefront."
+        />
+        <Metric
+          title="Total banners"
+          value={summary.total}
+          note="All saved banners in the system."
+        />
+      </div>
+
+      <div className="mt-5 space-y-5">
+        <BannerSection
+          title={bannerTypeLabels["hero-banner"]}
+          items={grouped["hero-banner"]}
+          loading={loading}
+          onToggle={toggleBanner}
+          onEdit={startEdit}
+          onDelete={deleteBanner}
+        />
+        <BannerSection
+          title={bannerTypeLabels["promo-banner"]}
+          items={grouped["promo-banner"]}
+          loading={loading}
+          onToggle={toggleBanner}
+          onEdit={startEdit}
+          onDelete={deleteBanner}
+        />
+        <BannerSection
+          title={bannerTypeLabels["slider-banner"]}
+          items={grouped["slider-banner"]}
+          loading={loading}
+          onToggle={toggleBanner}
+          onEdit={startEdit}
+          onDelete={deleteBanner}
+        />
       </div>
     </DashboardShell>
   );

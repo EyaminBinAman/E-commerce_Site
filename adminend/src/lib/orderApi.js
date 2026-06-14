@@ -18,6 +18,11 @@ export const orderStatusOptions = [
   "Cancelled",
 ];
 
+export const paymentStatusOptions = [
+  { label: "Unpaid", value: "Pending" },
+  { label: "Paid", value: "Paid" },
+];
+
 const fetchWithTimeout = async (url, options = {}) => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -116,16 +121,16 @@ export const mapBackendOrderToAdminRow = (order) => {
 };
 
 export const filterOrdersByMode = (rows, mode = "all") => {
+  const isPaid = (order) =>
+    order.billStatus === "Paid" || order.paymentStatus === "PAID";
+  const isCancelled = (order) => order.orderStatus === "Cancelled";
+
   if (mode === "active") {
-    return rows.filter(
-      (order) => !["Delivered", "Cancelled"].includes(order.orderStatus)
-    );
+    return rows.filter((order) => !isPaid(order) && !isCancelled(order));
   }
 
   if (mode === "history") {
-    return rows.filter((order) =>
-      ["Delivered", "Cancelled"].includes(order.orderStatus)
-    );
+    return rows.filter((order) => isPaid(order) || isCancelled(order));
   }
 
   return rows;
@@ -159,20 +164,36 @@ export async function getOrderByIdFromApi(orderId) {
   return mapBackendOrderToAdminRow(data.data.order);
 }
 
-export async function updateOrderStatusOnApi(orderId, uiStatus) {
+export async function updateOrderOnApi(orderId, payload = {}) {
   const apiBaseUrl = getApiBaseUrl();
+  const body = {};
+
+  if (payload.orderStatus !== undefined) {
+    body.orderStatus = toBackendOrderStatus(payload.orderStatus);
+  }
+
+  if (payload.paymentStatus !== undefined) {
+    body.paymentStatus = payload.paymentStatus;
+  }
+
   const response = await fetchWithTimeout(`${apiBaseUrl}/orders/update-order/${orderId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      orderStatus: toBackendOrderStatus(uiStatus),
-    }),
+    body: JSON.stringify(body),
   });
   const data = await response.json();
 
   if (!response.ok || !data.success) {
-    throw new Error(data.message || "Failed to update order status");
+    throw new Error(data.message || "Failed to update order");
   }
 
   return mapBackendOrderToAdminRow(data.data.order);
+}
+
+export async function updateOrderStatusOnApi(orderId, uiStatus) {
+  return updateOrderOnApi(orderId, { orderStatus: uiStatus });
+}
+
+export async function updateOrderPaymentStatusOnApi(orderId, paymentStatus) {
+  return updateOrderOnApi(orderId, { paymentStatus });
 }

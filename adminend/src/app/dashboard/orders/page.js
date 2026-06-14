@@ -7,7 +7,9 @@ export default function OrdersPage() {
       heading="Orders"
       rowFilter="active"
       editableStatus
+      editablePayment
       viewBasePath="/dashboard/orders"
+      pageDescription="Manage unpaid orders here. Update fulfillment status as you process them, then mark payment as paid to move the order into Order History."
     />
   );
 }

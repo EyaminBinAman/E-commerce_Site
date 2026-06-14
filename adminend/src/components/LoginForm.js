@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import BrandLogo from "@/components/BrandLogo";
 import { useToast } from "@/components/ui/toast";
 import { loginAdmin } from "@/lib/adminApi";
 
@@ -40,14 +41,9 @@ export default function LoginForm() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-mainSoft via-white to-white px-4">
       <section className="w-full max-w-md rounded-[28px] border border-neutral-200 bg-white p-7 shadow-xl shadow-main/10">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-main to-accent text-lg font-black text-white">
-            P
-          </div>
-          <div>
-            <p className="text-2xl font-black text-main">Paw Tail</p>
-            <p className="text-sm font-bold text-slate-400">Admin login</p>
-          </div>
+        <div>
+          <BrandLogo size="lg" />
+          <p className="mt-3 text-sm font-bold text-slate-400">Admin login</p>
         </div>
 
         <form onSubmit={handleSubmit} className="mt-8 space-y-5">

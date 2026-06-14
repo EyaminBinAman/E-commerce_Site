@@ -2,11 +2,17 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import DashboardShell, { Badge } from "@/components/DashboardShell";
 import { useToast } from "@/components/ui/toast";
-import { getOrderByIdFromApi } from "@/lib/orderApi";
+import {
+  getOrderByIdFromApi,
+  orderStatusOptions,
+  paymentStatusOptions,
+  updateOrderPaymentStatusOnApi,
+  updateOrderStatusOnApi,
+} from "@/lib/orderApi";
 
 function statusTone(status) {
   const tones = {
@@ -35,10 +41,12 @@ function InfoCard({ title, children }) {
 
 export default function OrderDetailsDashboard() {
   const { showToast } = useToast();
+  const router = useRouter();
   const params = useParams();
   const orderId = params?.orderId;
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
 
   useEffect(() => {
     const loadOrder = async () => {
@@ -60,6 +68,61 @@ export default function OrderDetailsDashboard() {
 
     loadOrder();
   }, [orderId]);
+
+  async function handleOrderStatusChange(nextStatus) {
+    if (!order) return;
+    setUpdating(true);
+    try {
+      const updated = await updateOrderStatusOnApi(order.mongoId, nextStatus);
+      setOrder(updated);
+      showToast({
+        tone: "success",
+        title: `Order status updated to ${nextStatus}.`,
+      });
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: error.message || "Failed to update order status.",
+      });
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  async function handlePaymentStatusChange(nextPaymentStatus) {
+    if (!order) return;
+    setUpdating(true);
+    try {
+      const updated = await updateOrderPaymentStatusOnApi(
+        order.mongoId,
+        nextPaymentStatus
+      );
+      setOrder(updated);
+
+      if (nextPaymentStatus === "Paid") {
+        showToast({
+          tone: "success",
+          title: "Payment marked as paid.",
+          description: "This order has moved to Order History.",
+        });
+        router.push("/dashboard/order-history");
+        return;
+      }
+
+      showToast({
+        tone: "success",
+        title: "Payment marked as unpaid.",
+      });
+      router.push("/dashboard/orders");
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: error.message || "Failed to update payment status.",
+      });
+    } finally {
+      setUpdating(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -122,11 +185,24 @@ export default function OrderDetailsDashboard() {
         <InfoCard title="Payment">
           <p className="text-lg font-black text-slate-800">{order.payment}</p>
           <p className="text-sm font-bold text-slate-500">
-            Payment status: {order.paymentStatus}
-          </p>
-          <p className="text-sm font-bold text-slate-500">
             Bill status: {order.billStatus}
           </p>
+          <label className="mt-4 block text-xs font-black uppercase tracking-[0.2em] text-main/70">
+            Payment status
+          </label>
+          <select
+            aria-label="Update payment status"
+            value={order.billStatus === "Paid" ? "Paid" : "Pending"}
+            disabled={updating}
+            onChange={(event) => handlePaymentStatusChange(event.target.value)}
+            className="mt-2 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-black text-main outline-none transition focus:border-main disabled:opacity-60"
+          >
+            {paymentStatusOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </InfoCard>
 
         <InfoCard title="Delivery Address">
@@ -179,8 +255,24 @@ export default function OrderDetailsDashboard() {
         <div className="rounded-[24px] border border-neutral-200 bg-white p-5 shadow-lg shadow-main/5">
           <p className="text-lg font-black text-slate-950">Order Status</p>
           <p className="mt-2 text-sm font-bold leading-6 text-slate-400">
-            Current workflow state is {order.orderStatus}. Payment method is {order.payment}.
+            Update fulfillment status while the order is still in the active queue.
           </p>
+          <label className="mt-4 block text-xs font-black uppercase tracking-[0.2em] text-main/70">
+            Status
+          </label>
+          <select
+            aria-label="Update order status"
+            value={order.orderStatus}
+            disabled={updating}
+            onChange={(event) => handleOrderStatusChange(event.target.value)}
+            className="mt-2 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-black text-main outline-none transition focus:border-main disabled:opacity-60"
+          >
+            {orderStatusOptions.map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="rounded-[24px] border border-neutral-200 bg-white p-5 shadow-lg shadow-main/5">
