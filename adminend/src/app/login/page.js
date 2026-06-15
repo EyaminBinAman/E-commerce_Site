@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { useAdminAuth } from "@/components/AuthGate";
 import { useToast } from "@/components/ui/toast";
 import { loginAdmin } from "@/lib/adminApi";
 import { saveAdminSession } from "@/lib/adminSession";
@@ -29,7 +28,6 @@ export default function LoginPage() {
     }));
   };
 
-  const handleSubmit = async (event) => {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
