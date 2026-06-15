@@ -86,7 +86,10 @@ export async function getCategoryAnimalsView() {
     const key = (item.animalName || "").trim().toLowerCase();
     if (!key) return acc;
     if (!acc[key]) acc[key] = [];
-    acc[key].push(item.name);
+    acc[key].push({
+      name: item.name,
+      slug: item.slug,
+    });
     return acc;
   }, {});
 
@@ -111,7 +114,15 @@ export async function getCategoryAnimalsView() {
         descBySlug[slug] ||
         descBySlug[groupKey] ||
         `${rawName} essentials, nutrition, toys and care products in one place.`,
-      categories: [allLabel, ...categoryList],
+      categories: [allLabel, ...categoryList.map((item) => item.name)],
+      categoryDetails: [
+        { name: allLabel, slug: null, isAll: true },
+        ...categoryList.map((item) => ({
+          name: item.name,
+          slug: item.slug,
+          isAll: false,
+        })),
+      ],
     };
   });
 

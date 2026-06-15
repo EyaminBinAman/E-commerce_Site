@@ -1,5 +1,6 @@
 import CategoryPageContent from "@/components/category/CategoryPageContent";
 import { findAnimalBySlug, getCategoryAnimalsView } from "@/lib/categoryApi";
+import { getProductsForAnimalView } from "@/lib/productApi";
 
 export default async function CategoryPage({ params, searchParams }) {
   const { animalSlug } = await params;
@@ -13,7 +14,16 @@ export default async function CategoryPage({ params, searchParams }) {
       icon: "🐶",
       description: "Dog category products.",
       categories: ["All Dogs"],
+      categoryDetails: [],
     };
 
-  return <CategoryPageContent animal={animal} subcategorySlug={sub} />;
+  const products = await getProductsForAnimalView(animal, sub);
+
+  return (
+    <CategoryPageContent
+      animal={animal}
+      subcategorySlug={sub}
+      products={products}
+    />
+  );
 }

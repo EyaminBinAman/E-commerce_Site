@@ -19,7 +19,10 @@ const normalizeAnimalNames = (value) => {
 
 const getBrands = async (req, res, next) => {
   try {
-    const filter = req.user?.role === "admin" ? {} : { isActive: true };
+    const includeInactive = ["1", "true", "yes"].includes(
+      String(req.query.includeInactive || "").toLowerCase()
+    );
+    const filter = includeInactive ? {} : { isActive: true };
 
     const brands = await Brand.find(filter).sort({ createdAt: -1 });
 

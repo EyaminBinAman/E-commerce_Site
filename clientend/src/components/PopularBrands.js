@@ -8,35 +8,11 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
+import { getBrandNavbarView } from "@/lib/brandApi";
 
-const brands = [
-  {
-    name: "Orijen",
-    description: "Dog & cat nutrition",
-  },
-  {
-    name: "Royal Canin",
-    description: "Breed-focused formulas",
-  },
-  {
-    name: "KONG",
-    description: "Chew and play",
-  },
-  {
-    name: "Fluval",
-    description: "Aquarium gear",
-  },
-  {
-    name: "Oxbow",
-    description: "Small pet care",
-  },
-  {
-    name: "NexGard",
-    description: "Preventive care",
-  },
-];
+export default async function PopularBrands() {
+  const brands = await getBrandNavbarView();
 
-export default function PopularBrands() {
   return (
     <section className="bg-[#eef8f2]">
       <Container>
@@ -53,13 +29,13 @@ export default function PopularBrands() {
             aria-label="Popular brands"
           >
             <CarouselContent className="-ml-5">
-              {brands.map(({ name, description }) => (
+              {brands.map(({ name, description, slug }) => (
                 <CarouselItem
-                  key={name}
+                  key={slug}
                   className="basis-[82%] pl-5 sm:basis-1/2 lg:basis-1/3 xl:basis-1/6"
                 >
                   <Link
-                    href="/"
+                    href={`/brands/${slug}`}
                     className="group flex min-h-36 flex-col items-center justify-center rounded-lg border border-neutral-200 bg-white px-5 text-center shadow-[0_16px_45px_rgba(23,63,49,0.08)] transition-all duration-300 hover:-translate-y-1 hover:border-main/30 hover:shadow-[0_20px_55px_rgba(23,63,49,0.14)]"
                   >
                     <h3 className="text-xl font-black text-main">{name}</h3>
