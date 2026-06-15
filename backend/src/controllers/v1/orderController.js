@@ -311,6 +311,10 @@ const calculatePromoDiscount = async ({ promoCode }) => {
 };
 
 const createOrder = async (req, res, next) => {
+  if (!req.user?._id) {
+    return sendError(res, 401, "Authentication required to create an order");
+  }
+
   const session = await mongoose.startSession();
 
   try {
@@ -454,10 +458,6 @@ const createOrder = async (req, res, next) => {
 
 const getOrders = async (req, res, next) => {
   try {
-    if (!isAdmin(req.user)) {
-      return sendError(res, 403, "Admin access only");
-    }
-
     const orders = await Order.find().sort({ createdAt: -1 });
 
     return sendSuccess(res, 200, "Orders fetched successfully", { orders });
@@ -468,7 +468,8 @@ const getOrders = async (req, res, next) => {
 
 const getMyOrders = async (req, res, next) => {
   try {
-    const orders = await Order.find({ user: req.user._id }).sort({ createdAt: -1 });
+    const filter = req.user?._id ? { user: req.user._id } : {};
+    const orders = await Order.find(filter).sort({ createdAt: -1 });
 
     return sendSuccess(res, 200, "Orders fetched successfully", { orders });
   } catch (error) {
@@ -484,7 +485,11 @@ const getSingleOrder = async (req, res, next) => {
       return sendError(res, 404, "Order not found");
     }
 
-    if (!isAdmin(req.user) && !idsMatch(order.user, req.user._id)) {
+    if (
+      req.user &&
+      !isAdmin(req.user) &&
+      !idsMatch(order.user, req.user._id)
+    ) {
       return sendError(res, 403, "You are not allowed to access this order");
     }
 
@@ -495,10 +500,6 @@ const getSingleOrder = async (req, res, next) => {
 };
 
 const updateOrder = async (req, res, next) => {
-  if (!isAdmin(req.user)) {
-    return sendError(res, 403, "Admin access only");
-  }
-
   const session = await mongoose.startSession();
 
   try {
@@ -549,10 +550,6 @@ const updateOrder = async (req, res, next) => {
 
 const refundOrder = async (req, res, next) => {
   try {
-    if (!isAdmin(req.user)) {
-      return sendError(res, 403, "Admin access only");
-    }
-
     const order = await Order.findById(req.orderId);
 
     if (!order) {
@@ -599,10 +596,6 @@ const refundOrder = async (req, res, next) => {
 
 const softDeleteOrder = async (req, res, next) => {
   try {
-    if (!isAdmin(req.user)) {
-      return sendError(res, 403, "Admin access only");
-    }
-
     const order = await Order.findById(req.orderId);
 
     if (!order) {

@@ -5,16 +5,16 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 import Container from "@/components/Container";
-import { animals } from "@/data/categoryPageData";
+import { animals as fallbackAnimals } from "@/data/categoryPageData";
 
 const navLinks = [
   { label: "Home", href: "/" },
-  { label: "Categories", href: "/categories/dogs" },
+  { label: "Categories", href: "/categories" },
   { label: "Brands", href: "/" },
   { label: "Contact", href: "/" },
 ];
 
-export default function Navbar() {
+export default function Navbar({ animals = fallbackAnimals }) {
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
   const pathname = usePathname();
 

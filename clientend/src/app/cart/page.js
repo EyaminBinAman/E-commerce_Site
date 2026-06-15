@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import {
   HiMinus,
   HiOutlineShoppingBag,
@@ -12,6 +13,9 @@ import {
 
 import { useCart } from "@/components/CartProvider";
 import Container from "@/components/Container";
+import LoginPopover from "@/components/LoginPopover";
+import { useAuth } from "@/context/AuthContext";
+import { saveCheckoutPrefs } from "@/lib/checkoutStorage";
 
 const apiOrigin =
   process.env.NEXT_PUBLIC_API_ORIGIN || "http://localhost:3000";
@@ -36,6 +40,8 @@ const getImageUrl = (src) => {
 };
 
 export default function CartPage() {
+  const router = useRouter();
+  const { user, loaded } = useAuth();
   const {
     cartItems,
     cartSubtotal,
@@ -51,6 +57,17 @@ export default function CartPage() {
   const [summary, setSummary] = useState(null);
   const [summaryMessage, setSummaryMessage] = useState("");
   const [isCalculating, setIsCalculating] = useState(false);
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const hasShownCheckoutPrompt = useRef(false);
+
+  useEffect(() => {
+    if (!loaded || user || !cartItems.length || hasShownCheckoutPrompt.current) {
+      return;
+    }
+
+    hasShownCheckoutPrompt.current = true;
+    setIsLoginOpen(true);
+  }, [cartItems.length, loaded, user]);
 
   useEffect(() => {
     if (!cartItems.length) {
@@ -99,6 +116,19 @@ export default function CartPage() {
     grandTotal: cartSubtotal,
   };
 
+  const handleCheckout = () => {
+    if (!user) {
+      setIsLoginOpen(true);
+      return;
+    }
+
+    saveCheckoutPrefs({
+      promoCode: appliedPromoCode,
+      deliveryZone,
+    });
+    router.push("/checkout");
+  };
+
   return (
     <main className="bg-white">
       <Container className="py-8 lg:py-12">
@@ -109,13 +139,13 @@ export default function CartPage() {
           <h1 className="text-3xl font-black text-neutral-950">Your Cart</h1>
         </div>
 
-        {isLoading ? (
+        {!loaded || isLoading ? (
           <div className="mt-8 rounded-lg border border-neutral-200 p-8 text-neutral-600">
             Loading cart...
           </div>
         ) : null}
 
-        {!isLoading && cartItems.length === 0 ? (
+        {loaded && !isLoading && cartItems.length === 0 ? (
           <div className="mt-8 rounded-lg border border-neutral-200 p-8 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-main/10 text-2xl text-main">
               <HiOutlineShoppingBag />
@@ -135,7 +165,7 @@ export default function CartPage() {
           </div>
         ) : null}
 
-        {cartItems.length > 0 ? (
+        {loaded && !isLoading && cartItems.length > 0 ? (
           <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
             <section className="space-y-4">
               {cartItems.map((item) => (
@@ -359,6 +389,7 @@ export default function CartPage() {
               </div>
               <button
                 type="button"
+                onClick={handleCheckout}
                 className="mt-6 flex h-12 w-full items-center justify-center rounded-full bg-main px-6 text-sm font-black text-white transition-all duration-300 hover:-translate-y-0.5 hover:bg-main/90"
               >
                 Proceed to Checkout
@@ -374,6 +405,20 @@ export default function CartPage() {
           </div>
         ) : null}
       </Container>
+
+      <LoginPopover
+        open={isLoginOpen}
+        onClose={() => setIsLoginOpen(false)}
+        onSuccess={() => {
+          setIsLoginOpen(false);
+          saveCheckoutPrefs({
+            promoCode: appliedPromoCode,
+            deliveryZone,
+          });
+          router.push("/checkout");
+        }}
+        description="You need to login for checkout. Sign in to continue with your order."
+      />
     </main>
   );
 }

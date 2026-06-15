@@ -21,6 +21,21 @@ const bannerSchema = new mongoose.Schema(
       required: true,
       min: 1,
     },
+    imageUrl: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    linkUrl: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    altText: {
+      type: String,
+      trim: true,
+      default: null,
+    },
   },
   {
     timestamps: true,
