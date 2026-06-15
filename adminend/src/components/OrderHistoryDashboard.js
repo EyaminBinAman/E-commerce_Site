@@ -18,14 +18,14 @@ const summaryCards = [
   {
     title: "All Orders",
     value: "00",
-    description: "All paid and cancelled order records.",
+    description: "All delivered and cancelled order records.",
     accent: "from-main to-main/70",
     ring: "ring-main/15",
   },
   {
     title: "Completed Orders",
     value: "00",
-    description: "Orders whose payment has been marked as paid.",
+    description: "Orders that reached delivered status.",
     accent: "from-emerald-400 to-teal-300",
     ring: "ring-emerald-100",
   },
@@ -39,7 +39,7 @@ const summaryCards = [
   {
     title: "Delivered Orders",
     value: "00",
-    description: "Paid or unpaid orders that reached delivered status.",
+    description: "Orders that reached delivered status.",
     accent: "from-mainHover to-main",
     ring: "ring-main/20",
   },
@@ -128,7 +128,7 @@ function getOrderDashboardCards(orderRows) {
 function getHistorySummaryCards(orderRows) {
   const delivered = orderRows.filter((order) => order.orderStatus === "Delivered").length;
   const cancelled = orderRows.filter((order) => order.orderStatus === "Cancelled").length;
-  const completed = orderRows.filter((order) => order.billStatus === "Paid").length;
+  const completed = delivered;
 
   return summaryCards.map((card) => {
     const values = {
@@ -232,6 +232,14 @@ function OrderDetailsModal({ order, onClose }) {
               <span>Subtotal</span>
               <span>{order.subtotal}</span>
             </div>
+            {order.discountAmount > 0 ? (
+              <div className="flex justify-between text-sm font-bold text-emerald-700">
+                <span>
+                  Discount{order.promoCode ? ` (${order.promoCode})` : ""}
+                </span>
+                <span>-{order.discount}</span>
+              </div>
+            ) : null}
             <div className="flex justify-between text-sm font-bold text-slate-500">
               <span>Delivery</span>
               <span>{order.delivery}</span>
@@ -343,7 +351,7 @@ export default function OrderHistoryDashboard({
         showToast({
           tone: "success",
           title: `Order ${order.id} marked as paid.`,
-          description: "It has moved to Order History.",
+          description: "It will stay in Orders until it is delivered or cancelled.",
         });
         return;
       }

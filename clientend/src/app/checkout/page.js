@@ -19,6 +19,31 @@ const formatPrice = (value) =>
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 
+const getItemDiscount = (item) => {
+  const regularPrice = Number(item.product?.price);
+  const discountPrice = Number(item.product?.discountPrice);
+
+  if (
+    !Number.isFinite(regularPrice) ||
+    !Number.isFinite(discountPrice) ||
+    discountPrice >= regularPrice
+  ) {
+    return null;
+  }
+
+  const priceAdjustment = Number(item.variant?.priceAdjustment || 0);
+  const originalUnitPrice = regularPrice + priceAdjustment;
+  const savedPerItem = regularPrice - discountPrice;
+  const savedTotal = savedPerItem * Number(item.quantity || 1);
+  const percentage = Math.round((savedPerItem / regularPrice) * 100);
+
+  return {
+    originalSubtotal: originalUnitPrice * Number(item.quantity || 1),
+    savedTotal,
+    percentage,
+  };
+};
+
 const paymentMethods = [
   { value: "COD", label: "Cash on delivery" },
   { value: "BKASH", label: "bKash" },
@@ -405,25 +430,41 @@ export default function CheckoutPage() {
               <h2 className="text-xl font-black text-neutral-950">Order summary</h2>
 
               <div className="mt-4 space-y-3 text-sm">
-                {cartItems.map((item) => (
-                  <div
-                    key={item._id}
-                    className="flex items-start justify-between gap-3 border-b border-neutral-100 pb-3"
-                  >
-                    <div>
-                      <p className="font-bold text-neutral-950">{item.product.name}</p>
-                      {item.variant ? (
-                        <p className="text-xs text-neutral-500">
-                          {item.variant.value || item.variant.name}
-                        </p>
-                      ) : null}
-                      <p className="text-xs text-neutral-500">Qty {item.quantity}</p>
+                {cartItems.map((item) => {
+                  const discount = getItemDiscount(item);
+
+                  return (
+                    <div
+                      key={item._id}
+                      className="flex items-start justify-between gap-3 border-b border-neutral-100 pb-3"
+                    >
+                      <div>
+                        <p className="font-bold text-neutral-950">{item.product.name}</p>
+                        {item.variant ? (
+                          <p className="text-xs text-neutral-500">
+                            {item.variant.value || item.variant.name}
+                          </p>
+                        ) : null}
+                        <p className="text-xs text-neutral-500">Qty {item.quantity}</p>
+                        {discount ? (
+                          <p className="mt-1 text-xs font-black text-emerald-700">
+                            Save {formatPrice(discount.savedTotal)} ({discount.percentage}%)
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="text-right">
+                        <span className="block font-black text-neutral-950">
+                          {formatPrice(item.itemSubtotal)}
+                        </span>
+                        {discount ? (
+                          <span className="mt-1 block text-xs font-bold text-neutral-400 line-through">
+                            {formatPrice(discount.originalSubtotal)}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
-                    <span className="font-black text-neutral-950">
-                      {formatPrice(item.itemSubtotal)}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               <div className="mt-5 space-y-3 border-t border-neutral-200 pt-5 text-sm">

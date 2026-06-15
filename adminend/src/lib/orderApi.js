@@ -1,6 +1,4 @@
-import { getApiBaseUrl } from "@/lib/apiBaseUrl";
-
-const REQUEST_TIMEOUT_MS = 12000;
+import { adminApi } from "@/lib/adminApi";
 
 const paymentMethodLabels = {
   COD: "Cash on delivery",
@@ -22,16 +20,6 @@ export const paymentStatusOptions = [
   { label: "Unpaid", value: "Pending" },
   { label: "Paid", value: "Paid" },
 ];
-
-const fetchWithTimeout = async (url, options = {}) => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    return await fetch(url, { credentials: "include", ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-};
 
 export const formatTk = (amount) => {
   const value = Number(amount) || 0;
@@ -102,7 +90,9 @@ export const mapBackendOrderToAdminRow = (order) => {
     payment: paymentMethodLabels[order.paymentMethod] || order.paymentMethod,
     paymentStatus: paymentStatus.toUpperCase(),
     subtotal: formatTk(order.subtotal),
+    promoCode: order.promoCode || "",
     discount: formatTk(order.promoDiscount || 0),
+    discountAmount: Number(order.promoDiscount) || 0,
     delivery: formatTk(order.deliveryCharge || 0),
     total: formatTk(order.grandTotal),
     orderStatus: toUiOrderStatus(order.orderStatus),
@@ -121,51 +111,37 @@ export const mapBackendOrderToAdminRow = (order) => {
 };
 
 export const filterOrdersByMode = (rows, mode = "all") => {
-  const isPaid = (order) =>
-    order.billStatus === "Paid" || order.paymentStatus === "PAID";
   const isCancelled = (order) => order.orderStatus === "Cancelled";
+  const isDelivered = (order) => order.orderStatus === "Delivered";
 
   if (mode === "active") {
-    return rows.filter((order) => !isPaid(order) && !isCancelled(order));
+    return rows.filter((order) => !isDelivered(order) && !isCancelled(order));
   }
 
   if (mode === "history") {
-    return rows.filter((order) => isPaid(order) || isCancelled(order));
+    return rows.filter((order) => isDelivered(order) || isCancelled(order));
   }
 
   return rows;
 };
 
 export async function getOrdersFromApi() {
-  const apiBaseUrl = getApiBaseUrl();
-  const response = await fetchWithTimeout(`${apiBaseUrl}/orders/get-orders`, {
+  const data = await adminApi("/orders/get-orders", {
     cache: "no-store",
   });
-  const data = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.message || "Failed to load orders");
-  }
 
   return (data.data?.orders || []).map(mapBackendOrderToAdminRow);
 }
 
 export async function getOrderByIdFromApi(orderId) {
-  const apiBaseUrl = getApiBaseUrl();
-  const response = await fetchWithTimeout(`${apiBaseUrl}/orders/get-order/${orderId}`, {
+  const data = await adminApi(`/orders/get-order/${orderId}`, {
     cache: "no-store",
   });
-  const data = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.message || "Failed to load order");
-  }
 
   return mapBackendOrderToAdminRow(data.data.order);
 }
 
 export async function updateOrderOnApi(orderId, payload = {}) {
-  const apiBaseUrl = getApiBaseUrl();
   const body = {};
 
   if (payload.orderStatus !== undefined) {
@@ -176,16 +152,10 @@ export async function updateOrderOnApi(orderId, payload = {}) {
     body.paymentStatus = payload.paymentStatus;
   }
 
-  const response = await fetchWithTimeout(`${apiBaseUrl}/orders/update-order/${orderId}`, {
+  const data = await adminApi(`/orders/update-order/${orderId}`, {
     method: "PATCH",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  const data = await response.json();
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.message || "Failed to update order");
-  }
 
   return mapBackendOrderToAdminRow(data.data.order);
 }

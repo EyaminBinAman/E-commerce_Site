@@ -381,21 +381,6 @@ export default function PromoCodesPage() {
       </div>
 
       <div className="mt-5 space-y-5">
-        {loading ? (
-          <section className="rounded-[24px] border border-neutral-200 bg-white p-8 text-center text-sm font-black text-main shadow-lg shadow-main/5">
-            Loading promo codes...
-          </section>
-        ) : (
-          <PromoTable
-            title="Promo list"
-            items={promoCodes}
-            onToggle={togglePromo}
-            onDelete={deletePromo}
-            onEdit={editPromo}
-            busyId={busyId}
-          />
-        )}
-
         <div className="flex justify-end">
           <button
             type="button"
@@ -461,6 +446,21 @@ export default function PromoCodesPage() {
             </form>
           </section>
         ) : null}
+
+        {loading ? (
+          <section className="rounded-[24px] border border-neutral-200 bg-white p-8 text-center text-sm font-black text-main shadow-lg shadow-main/5">
+            Loading promo codes...
+          </section>
+        ) : (
+          <PromoTable
+            title="Promo list"
+            items={promoCodes}
+            onToggle={togglePromo}
+            onDelete={deletePromo}
+            onEdit={editPromo}
+            busyId={busyId}
+          />
+        )}
       </div>
     </DashboardShell>
   );

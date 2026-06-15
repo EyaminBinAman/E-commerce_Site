@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import DashboardShell, { Icon } from "@/components/DashboardShell";
+import { useAdminAuth } from "@/components/AuthGate";
 import { useToast } from "@/components/ui/toast";
+import { logoutAdmin } from "@/lib/adminApi";
 import {
   clearAdminSession,
   DEFAULT_ADMIN_PROFILE,
@@ -21,9 +23,11 @@ const initialSecurity = {
 export default function ProfilePage() {
   const router = useRouter();
   const { showToast } = useToast();
+  const { setAdmin } = useAdminAuth();
   const [profile, setProfile] = useState(() => loadAdminSession());
   const [security, setSecurity] = useState(initialSecurity);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const initials = useMemo(() => {
     const parts = String(profile.name || "").trim().split(/\s+/);
@@ -72,10 +76,24 @@ export default function ProfilePage() {
     showToast({ tone: "success", title: "Password updated in this demo profile." });
   };
 
-  const signOut = () => {
-    clearAdminSession();
-    showToast({ tone: "success", title: "Signed out." });
-    router.push("/login");
+  const signOut = async () => {
+    setIsSigningOut(true);
+
+    try {
+      await logoutAdmin();
+      clearAdminSession();
+      setAdmin(null);
+      showToast({ tone: "success", title: "Signed out." });
+      router.replace("/login");
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: "Sign out failed",
+        description: error.message,
+      });
+    } finally {
+      setIsSigningOut(false);
+    }
   };
 
   return (
@@ -242,10 +260,11 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={signOut}
+                disabled={isSigningOut}
                 className="inline-flex h-11 items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 text-sm font-black text-red-600 transition hover:bg-red-100"
               >
                 <Icon name="log-in" className="h-4 w-4 rotate-180" />
-                Sign out
+                {isSigningOut ? "Signing out..." : "Sign out"}
               </button>
             </div>
           </section>

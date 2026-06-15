@@ -27,6 +27,31 @@ const formatPrice = (value) =>
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 
+const getItemDiscount = (item) => {
+  const regularPrice = Number(item.product?.price);
+  const discountPrice = Number(item.product?.discountPrice);
+
+  if (
+    !Number.isFinite(regularPrice) ||
+    !Number.isFinite(discountPrice) ||
+    discountPrice >= regularPrice
+  ) {
+    return null;
+  }
+
+  const priceAdjustment = Number(item.variant?.priceAdjustment || 0);
+  const originalUnitPrice = regularPrice + priceAdjustment;
+  const savedPerItem = regularPrice - discountPrice;
+  const savedTotal = savedPerItem * Number(item.quantity || 1);
+  const percentage = Math.round((savedPerItem / regularPrice) * 100);
+
+  return {
+    originalUnitPrice,
+    savedTotal,
+    percentage,
+  };
+};
+
 const getImageUrl = (src) => {
   if (!src) {
     return "/window.svg";
@@ -168,11 +193,14 @@ export default function CartPage() {
         {loaded && !isLoading && cartItems.length > 0 ? (
           <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
             <section className="space-y-4">
-              {cartItems.map((item) => (
-                <article
-                  key={item._id}
-                  className="grid gap-4 rounded-lg border border-neutral-200 p-4 sm:grid-cols-[120px_1fr] lg:grid-cols-[120px_1fr_auto]"
-                >
+              {cartItems.map((item) => {
+                const discount = getItemDiscount(item);
+
+                return (
+                  <article
+                    key={item._id}
+                    className="grid gap-4 rounded-lg border border-neutral-200 p-4 sm:grid-cols-[120px_1fr] lg:grid-cols-[120px_1fr_auto]"
+                  >
                   <Link
                     href={`/product/${item.product.slug}`}
                     className="relative aspect-square overflow-hidden rounded-md bg-neutral-50"
@@ -205,9 +233,21 @@ export default function CartPage() {
                     >
                       {item.isAvailable ? `${item.stockQuantity} in stock` : "Unavailable"}
                     </p>
-                    <p className="mt-3 text-base font-black text-main">
-                      {formatPrice(item.finalUnitPrice)}
-                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <p className="text-base font-black text-main">
+                        {formatPrice(item.finalUnitPrice)}
+                      </p>
+                      {discount ? (
+                        <>
+                          <p className="text-sm font-bold text-neutral-400 line-through">
+                            {formatPrice(discount.originalUnitPrice)}
+                          </p>
+                          <p className="text-sm font-black text-emerald-700">
+                            Save {formatPrice(discount.savedTotal)} ({discount.percentage}%)
+                          </p>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 lg:flex-col lg:items-end lg:justify-between">
@@ -259,8 +299,9 @@ export default function CartPage() {
                       </button>
                     </div>
                   </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </section>
 
             <aside className="h-fit rounded-lg border border-neutral-200 p-5">

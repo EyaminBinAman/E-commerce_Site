@@ -103,9 +103,9 @@ export default function OrderDetailsDashboard() {
         showToast({
           tone: "success",
           title: "Payment marked as paid.",
-          description: "This order has moved to Order History.",
+          description: "This order will stay active until it is delivered or cancelled.",
         });
-        router.push("/dashboard/order-history");
+        router.push("/dashboard/orders");
         return;
       }
 
@@ -282,10 +282,14 @@ export default function OrderDetailsDashboard() {
               <span>Subtotal</span>
               <span>{order.subtotal}</span>
             </div>
-            <div className="flex justify-between text-sm font-bold text-slate-500">
-              <span>Discount</span>
-              <span>{order.discount}</span>
-            </div>
+            {order.discountAmount > 0 ? (
+              <div className="flex justify-between text-sm font-bold text-emerald-700">
+                <span>
+                  Discount{order.promoCode ? ` (${order.promoCode})` : ""}
+                </span>
+                <span>-{order.discount}</span>
+              </div>
+            ) : null}
             <div className="flex justify-between text-sm font-bold text-slate-500">
               <span>Delivery Charge</span>
               <span>{order.delivery}</span>

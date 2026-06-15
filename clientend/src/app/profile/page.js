@@ -62,6 +62,7 @@ export default function ProfilePage() {
   const searchParams = useSearchParams();
 
   const initialTab = searchParams.get("tab");
+  const initialOrderId = searchParams.get("order");
   const [active, setActive] = useState(
     initialTab && validTabs.has(initialTab) ? initialTab : "overview"
   );
@@ -165,6 +166,7 @@ export default function ProfilePage() {
                 orders={orders}
                 isLoading={dataLoading}
                 onRefresh={refreshProfileData}
+                initialOrderId={initialOrderId}
               />
             )}
             {active === "wishlist" && (
@@ -1055,9 +1057,23 @@ const orderFilters = [
   "Cancelled",
 ];
 
-function Orders({ orders, isLoading, onRefresh }) {
+function Orders({ orders, isLoading, onRefresh, initialOrderId = "" }) {
   const [filter, setFilter] = useState("All");
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState(initialOrderId || "");
+
+  const selectedOrder = useMemo(
+    () =>
+      orders.find(
+        (order) => order.id === selectedOrderId || order.mongoId === selectedOrderId
+      ) || null,
+    [orders, selectedOrderId]
+  );
+
+  useEffect(() => {
+    if (!initialOrderId) return;
+    setSelectedOrderId(initialOrderId);
+  }, [initialOrderId]);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -1110,13 +1126,26 @@ function Orders({ orders, isLoading, onRefresh }) {
         })}
       </div>
 
+      {selectedOrder ? (
+        <OrderDetails
+          order={selectedOrder}
+          onClose={() => setSelectedOrderId("")}
+        />
+      ) : null}
+
       <div className="flex flex-col gap-3">
         {isLoading ? (
           <p className="rounded-2xl border border-dashed border-neutral-200 p-8 text-center text-sm text-neutral-500">
             Loading your orders...
           </p>
         ) : filtered.length ? (
-          filtered.map((order) => <OrderRow key={order.id} order={order} />)
+          filtered.map((order) => (
+            <OrderRow
+              key={order.id}
+              order={order}
+              onView={() => setSelectedOrderId(order.id)}
+            />
+          ))
         ) : (
           <p className="rounded-2xl border border-dashed border-neutral-200 p-8 text-center text-sm text-neutral-500">
             No orders in this status yet.
@@ -1127,7 +1156,7 @@ function Orders({ orders, isLoading, onRefresh }) {
   );
 }
 
-function OrderRow({ order, compact = false }) {
+function OrderRow({ order, compact = false, onView }) {
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 p-4 transition-all duration-300 hover:border-main sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-start gap-3">
@@ -1163,13 +1192,124 @@ function OrderRow({ order, compact = false }) {
         <span className="text-sm font-bold text-neutral-900">
           {formatBDT(order.total)}
         </span>
+        {onView ? (
+          <button
+            type="button"
+            onClick={onView}
+            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-main transition-colors hover:border-main hover:bg-mainSoft"
+          >
+            View
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function OrderDetails({ order, onClose }) {
+  const address = order.shippingAddress;
+
+  return (
+    <section className="rounded-2xl border border-main/20 bg-mainSoft/30 p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-wider text-main/70">
+            Order details
+          </p>
+          <h3 className="mt-1 text-xl font-black text-neutral-950">{order.id}</h3>
+          <p className="mt-1 text-sm font-semibold text-neutral-500">
+            {order.date} • {order.paymentMethod} • {order.paymentStatus}
+          </p>
+        </div>
         <button
           type="button"
-          className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-main transition-colors hover:border-main hover:bg-mainSoft"
+          onClick={onClose}
+          className="h-9 rounded-xl border border-neutral-200 bg-white px-3 text-xs font-black text-main transition-colors hover:border-main"
         >
-          View
+          Close
         </button>
       </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_280px]">
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+          <h4 className="text-sm font-black text-neutral-950">Items</h4>
+          <div className="mt-3 space-y-3">
+            {order.items.map((item, index) => (
+              <div
+                key={`${item.productName}-${index}`}
+                className="flex items-start justify-between gap-3 border-b border-neutral-100 pb-3 last:border-0 last:pb-0"
+              >
+                <div>
+                  <p className="text-sm font-black text-neutral-900">
+                    {item.productName}
+                  </p>
+                  {item.variantName ? (
+                    <p className="mt-0.5 text-xs text-neutral-500">
+                      {item.variantName}
+                    </p>
+                  ) : null}
+                  <p className="mt-0.5 text-xs text-neutral-500">
+                    Qty {item.quantity} x {formatBDT(item.finalUnitPrice)}
+                  </p>
+                </div>
+                <p className="text-sm font-black text-neutral-950">
+                  {formatBDT(item.itemSubtotal)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+            <h4 className="text-sm font-black text-neutral-950">Summary</h4>
+            <div className="mt-3 space-y-2 text-sm">
+              <SummaryLine label="Subtotal" value={formatBDT(order.subtotal)} />
+              {order.promoDiscount > 0 ? (
+                <SummaryLine
+                  label={order.promoCode ? `Voucher (${order.promoCode})` : "Voucher"}
+                  value={`-${formatBDT(order.promoDiscount)}`}
+                  tone="discount"
+                />
+              ) : null}
+              <SummaryLine label="Delivery" value={formatBDT(order.deliveryCharge)} />
+              <SummaryLine label="Total" value={formatBDT(order.total)} strong />
+            </div>
+          </div>
+
+          {address ? (
+            <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+              <h4 className="text-sm font-black text-neutral-950">Delivery address</h4>
+              <p className="mt-3 text-sm font-semibold text-neutral-700">
+                {address.name}
+              </p>
+              <p className="mt-1 text-sm text-neutral-500">{address.phone}</p>
+              <p className="mt-1 text-sm text-neutral-500">
+                {[address.address, address.area, address.city, address.postalCode]
+                  .filter(Boolean)
+                  .join(", ")}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SummaryLine({ label, value, strong = false, tone = "default" }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className={strong ? "font-black text-neutral-950" : "text-neutral-600"}>
+        {label}
+      </span>
+      <span
+        className={`font-black ${
+          tone === "discount" ? "text-emerald-700" : "text-neutral-950"
+        }`}
+      >
+        {value}
+      </span>
     </div>
   );
 }

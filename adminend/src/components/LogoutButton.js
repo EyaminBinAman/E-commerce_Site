@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useToast } from "@/components/ui/toast";
 import { useAdminAuth } from "@/components/AuthGate";
 import { logoutAdmin } from "@/lib/adminApi";
+import { clearAdminSession } from "@/lib/adminSession";
 
 export default function LogoutButton() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function LogoutButton() {
         description: "Admin session ended.",
         tone: "success",
       });
+      clearAdminSession();
       setAdmin(null);
       router.replace("/login");
     } catch (error) {
