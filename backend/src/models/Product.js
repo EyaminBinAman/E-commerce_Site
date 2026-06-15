@@ -76,6 +76,12 @@ const productSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    animal: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Animal",
+      default: null,
+      index: true,
+    },
     brand: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Brand",

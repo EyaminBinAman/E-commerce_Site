@@ -30,7 +30,24 @@ export default function DeliveryPage() {
     const processing = orders.filter((order) => order.orderStatus === "Processing").length;
     const shipping = orders.filter((order) => order.orderStatus === "Shipping").length;
     const delivered = orders.filter((order) => order.orderStatus === "Delivered").length;
-    return { pending, processing, shipping, delivered, total: orders.length };
+    const inTransit = processing + shipping;
+    const collected = orders
+      .filter((order) => order.paymentStatus === "Paid")
+      .reduce((sum, order) => sum + (order.grandTotal || 0), 0);
+    const pendingPayment = orders
+      .filter((order) => order.paymentStatus !== "Paid")
+      .reduce((sum, order) => sum + (order.grandTotal || 0), 0);
+
+    return {
+      pending,
+      processing,
+      shipping,
+      delivered,
+      inTransit,
+      collected,
+      pendingPayment,
+      total: orders.length,
+    };
   }, [orders]);
 
   const visibleOrders = useMemo(() => {
@@ -59,6 +76,20 @@ export default function DeliveryPage() {
         <Metric title="Shipping" value={summary.shipping} />
         <Metric title="Delivered" value={summary.delivered} />
         <Metric title="Total Orders" value={summary.total} />
+      </div>
+
+      <div className="mt-5 rounded-[24px] border border-neutral-200 bg-white shadow-lg shadow-main/5">
+        <div className="border-b border-neutral-100 px-5 py-4">
+          <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">
+            Delivery overview
+          </p>
+        </div>
+        <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
+          <InfoCard label="Orders in transit" value={summary.inTransit} />
+          <InfoCard label="Paid revenue" value={`৳ ${Number(summary.collected || 0).toLocaleString()}`} />
+          <InfoCard label="Pending payment" value={`৳ ${Number(summary.pendingPayment || 0).toLocaleString()}`} />
+          <InfoCard label="Ready to ship" value={summary.pending} />
+        </div>
       </div>
 
       <div className="mt-5 overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-lg shadow-main/5">
@@ -134,6 +165,17 @@ function Metric({ title, value }) {
       <div className="mb-2 h-1.5 rounded-full bg-gradient-to-r from-main to-main/70" />
       <p className="text-sm font-extrabold text-slate-500">{title}</p>
       <p className="mt-1 text-2xl font-black text-main">{value}</p>
+    </article>
+  );
+}
+
+function InfoCard({ label, value }) {
+  return (
+    <article className="rounded-2xl border border-neutral-200 bg-white p-4">
+      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400">
+        {label}
+      </p>
+      <p className="mt-2 text-sm font-black text-main">{value}</p>
     </article>
   );
 }

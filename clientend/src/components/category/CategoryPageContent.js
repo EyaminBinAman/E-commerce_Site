@@ -1,22 +1,84 @@
 import Container from "@/components/Container";
 import CategorySidebar from "@/components/category/CategorySidebar";
 import ProductCard from "@/components/category/ProductCard";
-import { getSubcategoryBySlug } from "@/data/categoryPageData";
-import { products } from "@/data/categoryPageData";
+import { getSubcategoryBySlug, slugifyCategory } from "@/data/categoryPageData";
+import { products as fallbackProducts } from "@/data/categoryPageData";
 
-export default function CategoryPageContent({ animal, subcategorySlug }) {
+const emojiByAnimal = {
+  dog: "🐶",
+  dogs: "🐶",
+  cat: "🐱",
+  cats: "🐱",
+  fish: "🐠",
+  bird: "🦜",
+  birds: "🦜",
+  rabbit: "🐹",
+  "small-pets": "🐹",
+};
+
+function normalizeProduct(product, animalSlug) {
+  const originalPrice = Number(product.price ?? 0);
+  const hasDiscount =
+    typeof product.discountPrice === "number" && product.discountPrice < originalPrice;
+  const categoryName =
+    product.category?.name || product.subcategory || product.category || "";
+  const categorySlug =
+    product.category?.slug || slugifyCategory(categoryName || product.subcategory || "");
+  const activeAnimal =
+    product.animal?.slug || product.animal || product.category || animalSlug;
+
+  return {
+    _id: product._id,
+    slug: product.slug || `${String(product.name || "product").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`,
+    name: product.name,
+    brand: product.brand?.name || product.brand || "",
+    animal: activeAnimal,
+    category: {
+      name: categoryName || animalSlug,
+      slug: categorySlug || animalSlug,
+    },
+    subcategory: categoryName || "",
+    emoji: product.emoji || emojiByAnimal[animalSlug] || "🐾",
+    price: hasDiscount ? Number(product.discountPrice) : originalPrice,
+    oldPrice: hasDiscount ? originalPrice : null,
+    discount: hasDiscount
+      ? `${Math.max(1, Math.round(((originalPrice - Number(product.discountPrice)) / originalPrice) * 100))}% off`
+      : null,
+    ratingCount: product.ratingCount || "0",
+    badges: product.badges?.length
+      ? product.badges
+      : [
+          product.isFeatured ? "New" : null,
+          product.isOfferEnabled ? "Sale" : null,
+          product.isOutOfStock ? "Autoship" : null,
+        ].filter(Boolean),
+  };
+}
+
+export default function CategoryPageContent({
+  animal,
+  subcategorySlug,
+  products = [],
+  brands = [],
+}) {
+  const catalogProducts = products.length ? products : fallbackProducts;
+  const displayProducts = catalogProducts.map((product) =>
+    normalizeProduct(product, animal.slug)
+  );
   const activeSubcategory = getSubcategoryBySlug(animal, subcategorySlug);
   const isAllCategory = activeSubcategory === animal.categories[0];
-  const relevantProducts = products.filter(
+  const relevantProducts = displayProducts.filter(
     (product) =>
-      product.category === animal.slug &&
-      (isAllCategory || product.subcategory === activeSubcategory)
+      (product.animal?.slug || product.animal === animal.slug) &&
+      (isAllCategory ||
+        slugifyCategory(product.category?.name || product.subcategory || "") ===
+          slugifyCategory(activeSubcategory))
   );
   const visibleProducts =
     relevantProducts.length > 0
       ? relevantProducts
-      : products
-          .filter((product) => product.category === animal.slug)
+      : displayProducts
+          .filter((product) => (product.animal?.slug || product.animal) === animal.slug)
           .slice(0, 6);
 
   return (
@@ -36,6 +98,7 @@ export default function CategoryPageContent({ animal, subcategorySlug }) {
           <CategorySidebar
             animal={animal}
             activeSubcategory={activeSubcategory}
+            brands={brands}
           />
 
           <section>
@@ -90,7 +153,7 @@ export default function CategoryPageContent({ animal, subcategorySlug }) {
 
             <div className="mt-7 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
               {visibleProducts.map((product) => (
-                <ProductCard key={`${product.brand}-${product.name}`} product={product} />
+                <ProductCard key={product._id || `${product.brand}-${product.name}`} product={product} />
               ))}
             </div>
           </section>

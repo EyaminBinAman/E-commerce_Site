@@ -5,8 +5,9 @@
   "main": "server.js",
   "scripts": {
     "dev": "PORT=3000 nodemon server.js",
-    "start": "PORT=3000 node server.js",
-    "migrate:variant-ids": "node scripts/addVariantIds.js"
+    "start": "cross-env PORT=3000 node server.js",
+    "migrate:variant-ids": "node scripts/addVariantIds.js",
+    "seed:demo-products": "node scripts/seedDemoProducts.js"
   },
   "keywords": [
     "express",
@@ -30,6 +31,7 @@
     "slugify": "^1.6.9"
   },
   "devDependencies": {
+    "cross-env": "^10.1.0",
     "nodemon": "^3.1.10"
   }
 }

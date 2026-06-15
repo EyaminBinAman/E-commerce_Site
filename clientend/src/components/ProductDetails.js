@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   HiMinus,
   HiOutlineHeart,
@@ -13,6 +13,7 @@ import {
 
 import { useCart } from "@/components/CartProvider";
 import { useWishlist } from "@/components/WishlistProvider";
+import { apiRequest } from "@/lib/api";
 
 const apiOrigin =
   process.env.NEXT_PUBLIC_API_ORIGIN || "http://localhost:3000";
@@ -122,6 +123,8 @@ export default function ProductDetails({ product, relatedProducts }) {
   const [cartMessage, setCartMessage] = useState("");
   const [wishlistMessage, setWishlistMessage] = useState("");
   const [isAddingToCart, setIsAddingToCart] = useState(false);
+  const [reviews, setReviews] = useState([]);
+  const [reviewsLoading, setReviewsLoading] = useState(true);
 
   const selectedVariant = activeVariants.find(
     (variant) => variant._id === selectedVariantId
@@ -132,6 +135,30 @@ export default function ProductDetails({ product, relatedProducts }) {
   const isOutOfStock = product.isOutOfStock || stockQuantity <= 0;
   const hasDiscount = typeof product.discountPrice === "number";
   const productIsWishlisted = isWishlisted(product._id);
+  const reviewCount = reviews.length;
+  const averageRating = reviews.length
+    ? (reviews.reduce((sum, item) => sum + Number(item.rating || 0), 0) / reviews.length).toFixed(1)
+    : null;
+
+  useEffect(() => {
+    let alive = true;
+
+    apiRequest(`/reviews/get-reviews?productId=${product._id}`)
+      .then((data) => {
+        if (!alive) return;
+        setReviews(data.reviews || []);
+      })
+      .catch(() => {
+        if (alive) setReviews([]);
+      })
+      .finally(() => {
+        if (alive) setReviewsLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [product._id]);
 
   const tabs = [
     { id: "description", label: "Description" },
@@ -162,8 +189,12 @@ export default function ProductDetails({ product, relatedProducts }) {
   const handleToggleWishlist = async () => {
     setWishlistMessage("");
 
-    const added = toggleWishlist(product);
-    setWishlistMessage(added ? "Added to wishlist" : "Removed from wishlist");
+    try {
+      const added = await toggleWishlist(product);
+      setWishlistMessage(added ? "Added to wishlist" : "Removed from wishlist");
+    } catch (error) {
+      setWishlistMessage(error.message || "Could not update wishlist");
+    }
   };
 
   return (
@@ -175,7 +206,7 @@ export default function ProductDetails({ product, relatedProducts }) {
         <span>/</span>
         {product.category?.slug ? (
           <Link
-            href={`/category/${product.category.slug}`}
+            href={`/categories/${product.animal?.slug || product.category.slug}`}
             className="transition-colors duration-300 hover:text-main"
           >
             {product.category.name}
@@ -255,7 +286,9 @@ export default function ProductDetails({ product, relatedProducts }) {
               <HiStar key={item} />
             ))}
             <span className="ml-2 text-sm font-semibold text-neutral-500">
-              No reviews yet
+              {reviewCount
+                ? `${averageRating} out of 5 from ${reviewCount} reviews`
+                : "No reviews yet"}
             </span>
           </div>
 
@@ -437,9 +470,40 @@ export default function ProductDetails({ product, relatedProducts }) {
           {activeTab === "reviews" ? (
             <div className="max-w-2xl rounded-lg border border-neutral-200 p-5">
               <h2 className="text-xl font-black text-neutral-950">Reviews</h2>
-              <p className="mt-3 text-neutral-600">
-                There are no reviews yet.
-              </p>
+              {reviewsLoading ? (
+                <p className="mt-3 text-neutral-600">Loading reviews...</p>
+              ) : reviews.length ? (
+                <div className="mt-4 space-y-4">
+                  {reviews.map((review) => (
+                    <article key={review._id} className="rounded-lg border border-neutral-200 p-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-sm font-black text-neutral-950">
+                            {review.customerName}
+                          </p>
+                          <p className="mt-1 text-xs font-semibold text-neutral-500">
+                            {review.rating}/5 stars
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-main/10 px-3 py-1 text-xs font-black text-main">
+                          {review.status}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-sm leading-6 text-neutral-600">
+                        {review.comment}
+                      </p>
+                      {review.reply ? (
+                        <div className="mt-3 rounded-md bg-mainSoft/40 p-3 text-sm text-main">
+                          <p className="font-black">Reply</p>
+                          <p className="mt-1 leading-6">{review.reply}</p>
+                        </div>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 text-neutral-600">There are no reviews yet.</p>
+              )}
             </div>
           ) : null}
         </div>

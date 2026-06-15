@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 
 import Container from "@/components/Container";
 import {
@@ -8,8 +11,9 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
+import { apiRequest } from "@/lib/api";
 
-const categories = [
+const fallbackCategories = [
   {
     name: "Dogs",
     description: "Food, toys, beds, meds",
@@ -48,7 +52,61 @@ const categories = [
   },
 ];
 
+const iconBySlug = {
+  dog: "🐶",
+  dogs: "🐶",
+  cat: "🐱",
+  cats: "🐱",
+  fish: "🐠",
+  bird: "🦜",
+  birds: "🦜",
+  rabbit: "🐹",
+  "small-pets": "🐹",
+};
+
 export default function ShopByPetType() {
+  const [animals, setAnimals] = useState([]);
+  const [categories, setCategories] = useState([]);
+
+  useEffect(() => {
+    let alive = true;
+
+    Promise.all([
+      apiRequest("/animals/get-animals").catch(() => ({ animals: [] })),
+      apiRequest("/categories/get-categories").catch(() => ({ categories: [] })),
+    ]).then(([animalData, categoryData]) => {
+      if (!alive) return;
+      setAnimals(animalData.animals || []);
+      setCategories(categoryData.categories || []);
+    });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const cards = useMemo(() => {
+    if (!animals.length) {
+      return fallbackCategories;
+    }
+
+    return animals.map((animal) => {
+      const relatedCategories = categories.filter(
+        (category) =>
+          category.animalName?.toLowerCase() === animal.name?.toLowerCase()
+      );
+
+      return {
+        name: animal.name,
+        description:
+          relatedCategories.slice(0, 3).map((item) => item.name).join(", ") ||
+          "Explore products, treats and essentials",
+        icon: iconBySlug[animal.slug] || "🐾",
+        href: `/categories/${animal.slug}`,
+      };
+    });
+  }, [animals, categories]);
+
   return (
     <section className="bg-[#fbf7f1]">
       <Container>
@@ -65,7 +123,7 @@ export default function ShopByPetType() {
             aria-label="Shop by category"
           >
             <CarouselContent className="-ml-5">
-              {categories.map(({ name, description, icon, href }) => (
+              {cards.map(({ name, description, icon, href }) => (
                 <CarouselItem
                   key={name}
                   className="basis-[82%] pl-5 sm:basis-1/2 lg:basis-1/3 xl:basis-1/6"
@@ -77,9 +135,7 @@ export default function ShopByPetType() {
                     <span className="text-4xl leading-none transition-transform duration-300 group-hover:scale-110">
                       {icon}
                     </span>
-                    <h3 className="mt-6 text-xl font-black text-main">
-                      {name}
-                    </h3>
+                    <h3 className="mt-6 text-xl font-black text-main">{name}</h3>
                     <p className="mt-3 text-sm font-medium leading-6 text-main/65">
                       {description}
                     </p>

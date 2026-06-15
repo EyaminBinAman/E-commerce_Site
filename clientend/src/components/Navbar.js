@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import Container from "@/components/Container";
-import { animals } from "@/data/categoryPageData";
+import { apiRequest } from "@/lib/api";
+import { animals as fallbackAnimals } from "@/data/categoryPageData";
 
 const navLinks = [
   { label: "Home", href: "/" },
@@ -14,9 +15,50 @@ const navLinks = [
   { label: "Contact", href: "/" },
 ];
 
+const iconBySlug = {
+  dog: "🐶",
+  dogs: "🐶",
+  cat: "🐱",
+  cats: "🐱",
+  fish: "🐠",
+  bird: "🦜",
+  birds: "🦜",
+  rabbit: "🐹",
+  "small-pets": "🐹",
+  pharmacy: "💊",
+};
+
 export default function Navbar() {
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
+  const [animals, setAnimals] = useState(
+    fallbackAnimals.map((animal) => ({
+      name: animal.name,
+      slug: animal.slug,
+      icon: iconBySlug[animal.slug] || animal.icon || "🐾",
+    }))
+  );
   const pathname = usePathname();
+
+  useEffect(() => {
+    let alive = true;
+    apiRequest("/animals/get-animals")
+      .then((data) => {
+        if (!alive) return;
+        const fetchedAnimals = (data.animals || []).map((animal) => ({
+          name: animal.name,
+          slug: animal.slug,
+          icon: iconBySlug[animal.slug] || "🐾",
+        }));
+        if (fetchedAnimals.length) {
+          setAnimals(fetchedAnimals);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const handleHomeClick = (event) => {
     if (pathname !== "/") return;
@@ -30,7 +72,7 @@ export default function Navbar() {
       <Container className="text-center">
         <div className="flex min-h-13 items-center justify-center py-3 lg:py-0">
           <nav className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-base font-semibold">
-            {navLinks.map((item) => (
+            {navLinks.map((item) =>
               item.label === "Categories" ? (
                 <div key={item.label} className="relative">
                   <button
@@ -52,9 +94,7 @@ export default function Navbar() {
                   <div
                     onMouseLeave={() => setIsCategoriesOpen(false)}
                     className={`absolute left-1/2 top-full z-50 mt-3 w-56 -translate-x-1/2 rounded-lg border border-white/10 bg-white p-2 text-left text-main shadow-[0_18px_55px_rgba(23,63,49,0.2)] transition-all duration-200 ${
-                      isCategoriesOpen
-                        ? "visible opacity-100"
-                        : "invisible opacity-0"
+                      isCategoriesOpen ? "visible opacity-100" : "invisible opacity-0"
                     }`}
                   >
                     {animals.map((animal) => (
@@ -80,7 +120,7 @@ export default function Navbar() {
                   {item.label}
                 </Link>
               )
-            ))}
+            )}
           </nav>
         </div>
       </Container>

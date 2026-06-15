@@ -1,66 +1,10 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import DashboardShell, { Badge, Icon } from "@/components/DashboardShell";
 import { useToast } from "@/components/ui/toast";
-
-const initialPromoCodes = [
-  {
-    id: "PC-1001",
-    name: "WELCOME10",
-    discountType: "percentage",
-    discountValue: 10,
-    minOrder: 1000,
-    maxAmount: 250,
-    scopeType: "all",
-    totalUsageLimit: 500,
-    usageCount: 128,
-    usageLimitPerUser: 1,
-    startDate: "2026-06-01",
-    expiryDate: "2026-07-15",
-    isActive: true,
-  },
-  {
-    id: "PC-1002",
-    name: "CATFOOD50",
-    discountType: "amount",
-    discountValue: 50,
-    minOrder: 600,
-    maxAmount: null,
-    scopeType: "products",
-    totalUsageLimit: 150,
-    usageCount: 42,
-    usageLimitPerUser: 2,
-    startDate: "2026-06-05",
-    expiryDate: "2026-06-30",
-    isActive: true,
-  },
-  {
-    id: "PC-1003",
-    name: "SUMMER5",
-    discountType: "percentage",
-    discountValue: 5,
-    minOrder: 300,
-    maxAmount: 100,
-    scopeType: "new-users",
-    totalUsageLimit: 1000,
-    usageCount: 701,
-    usageLimitPerUser: 1,
-    startDate: "2026-05-20",
-    expiryDate: "2026-06-22",
-    isActive: false,
-  },
-];
-
-const scopeLabels = {
-  all: "All items",
-  items: "Selected items",
-  categories: "Categories",
-  products: "Products",
-  users: "Users",
-  "new-users": "New users",
-};
+import { adminApi } from "@/lib/adminApi";
 
 const initialForm = {
   name: "",
@@ -71,19 +15,81 @@ const initialForm = {
   scopeType: "all",
   totalUsageLimit: "",
   usageLimitPerUser: "1",
-  startDate: "2026-06-12",
-  expiryDate: "2026-07-12",
+  startDate: "",
+  expiryDate: "",
 };
 
-function toNumber(value, fallback = 0) {
-  const parsed = Number(value);
-  return Number.isNaN(parsed) ? fallback : parsed;
+const scopeLabels = {
+  all: "All items",
+  items: "Selected items",
+  categories: "Categories",
+  products: "Products",
+  users: "Users",
+  "new-users": "New users",
+};
+
+const normalizePromoCode = (item) => ({
+  id: item._id,
+  name: item.name,
+  discountType: item.discountType,
+  discountValue: item.discountValue,
+  minOrder: item.minOrder,
+  maxAmount: item.maxAmount,
+  scopeType: item.scope?.type || "all",
+  totalUsageLimit: item.totalUsageLimit,
+  usageCount: item.usageCount || 0,
+  usageLimitPerUser: item.usageLimitPerUser || 1,
+  startDate: item.startDate ? new Date(item.startDate).toISOString().slice(0, 10) : "",
+  expiryDate: item.expiryDate ? new Date(item.expiryDate).toISOString().slice(0, 10) : "",
+  isActive: !!item.isActive,
+});
+
+function Field({
+  label,
+  name,
+  value,
+  onChange,
+  type = "text",
+  as = "input",
+  options = [],
+  min,
+  placeholder,
+}) {
+  return (
+    <label className="block">
+      <span className="text-xs font-black uppercase tracking-[0.22em] text-main/75">
+        {label}
+      </span>
+      {as === "select" ? (
+        <select
+          name={name}
+          value={value}
+          onChange={onChange}
+          className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-main"
+        >
+          {options.map(([optionValue, optionLabel]) => (
+            <option key={optionValue} value={optionValue}>
+              {optionLabel}
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          name={name}
+          value={value}
+          onChange={onChange}
+          type={type}
+          min={min}
+          placeholder={placeholder}
+          className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-300 focus:border-main"
+        />
+      )}
+    </label>
+  );
 }
 
 function PromoTable({ title, items, onToggle, onDelete, onEdit }) {
-  if (!items.length) {
-    return null;
-  }
+  if (!items.length) return null;
 
   return (
     <section className="overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-lg shadow-main/5">
@@ -149,11 +155,11 @@ function PromoTable({ title, items, onToggle, onDelete, onEdit }) {
                 </td>
                 <td className="px-4 py-4 text-center">
                   <div className="flex items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        className="inline-flex h-8 items-center gap-1 rounded-lg border border-main/15 bg-mainSoft px-3 text-xs font-black text-main transition hover:bg-mainSoft/70"
-                      onClick={() => onEdit(item.name)}
-                      >
+                    <button
+                      type="button"
+                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-main/15 bg-mainSoft px-3 text-xs font-black text-main transition hover:bg-mainSoft/70"
+                      onClick={() => onEdit(item)}
+                    >
                       <Icon name="edit" className="h-3.5 w-3.5" />
                       Edit
                     </button>
@@ -178,10 +184,32 @@ function PromoTable({ title, items, onToggle, onDelete, onEdit }) {
 
 export default function PromoCodesPage() {
   const { showToast, confirm } = useToast();
-  const [promoCodes, setPromoCodes] = useState(initialPromoCodes);
+  const [promoCodes, setPromoCodes] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [showCreate, setShowCreate] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const createRef = useRef(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    adminApi("/promo-codes/get-promo-codes")
+      .then((data) => {
+        if (!alive) return;
+        setPromoCodes((data.promoCodes || []).map(normalizePromoCode));
+      })
+      .catch((error) => {
+        showToast({ tone: "danger", title: error.message || "Failed to load promo codes." });
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [showToast]);
 
   const summary = useMemo(() => {
     const active = promoCodes.filter((item) => item.isActive).length;
@@ -195,10 +223,17 @@ export default function PromoCodesPage() {
 
   const scrollToCreate = () => {
     setShowCreate(true);
-    createRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    requestAnimationFrame(() => {
+      createRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
-  const handleSubmit = (event) => {
+  const refreshPromoCodes = async () => {
+    const data = await adminApi("/promo-codes/get-promo-codes");
+    setPromoCodes((data.promoCodes || []).map(normalizePromoCode));
+  };
+
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
     if (!form.name.trim()) {
@@ -206,35 +241,48 @@ export default function PromoCodesPage() {
       return;
     }
 
-    const nextPromo = {
-      id: `PC-${String(promoCodes.length + 1001).padStart(4, "0")}`,
-      name: form.name.trim().toUpperCase(),
-      discountType: form.discountType,
-      discountValue: toNumber(form.discountValue, 0),
-      minOrder: toNumber(form.minOrder, 0),
-      maxAmount: form.maxAmount ? toNumber(form.maxAmount, null) : null,
-      scopeType: form.scopeType,
-      totalUsageLimit: form.totalUsageLimit
-        ? toNumber(form.totalUsageLimit, null)
-        : null,
-      usageCount: 0,
-      usageLimitPerUser: toNumber(form.usageLimitPerUser, 1),
-      startDate: form.startDate,
-      expiryDate: form.expiryDate,
-      isActive: true,
-    };
-
-    setPromoCodes((prev) => [nextPromo, ...prev]);
-    setForm(initialForm);
-    showToast({ tone: "success", title: "Promo code created." });
+    setSaving(true);
+    try {
+      await adminApi("/promo-codes/post-promo-codes", {
+        method: "POST",
+        body: JSON.stringify({
+          name: form.name.trim(),
+          discountType: form.discountType,
+          discountValue: Number(form.discountValue),
+          minOrder: Number(form.minOrder),
+          maxAmount: form.maxAmount === "" ? null : Number(form.maxAmount),
+          totalUsageLimit:
+            form.totalUsageLimit === "" ? null : Number(form.totalUsageLimit),
+          usageLimitPerUser: Number(form.usageLimitPerUser),
+          startDate: form.startDate,
+          expiryDate: form.expiryDate,
+          isActive: true,
+          scope: { type: form.scopeType },
+        }),
+      });
+      await refreshPromoCodes();
+      setForm(initialForm);
+      showToast({ tone: "success", title: "Promo code created." });
+    } catch (error) {
+      showToast({ tone: "danger", title: error.message || "Failed to create promo code." });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const togglePromo = (id) => {
-    setPromoCodes((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, isActive: !item.isActive } : item
-      )
-    );
+  const togglePromo = async (id) => {
+    try {
+      const current = promoCodes.find((item) => item.id === id);
+      if (!current) return;
+
+      await adminApi(`/promo-codes/active-on-off-promo-codes/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive: !current.isActive }),
+      });
+      await refreshPromoCodes();
+    } catch (error) {
+      showToast({ tone: "danger", title: error.message || "Failed to update promo code." });
+    }
   };
 
   const deletePromo = (id, name) => {
@@ -243,17 +291,24 @@ export default function PromoCodesPage() {
       description: "This removes the code from the admin list.",
       confirmLabel: "Delete",
       tone: "danger",
-      onConfirm: () => {
-        setPromoCodes((prev) => prev.filter((item) => item.id !== id));
-        showToast({ tone: "success", title: "Promo code deleted." });
+      onConfirm: async () => {
+        try {
+          await adminApi(`/promo-codes/delete-promo-codes/${id}`, {
+            method: "DELETE",
+          });
+          await refreshPromoCodes();
+          showToast({ tone: "success", title: "Promo code deleted." });
+        } catch (error) {
+          showToast({ tone: "danger", title: error.message || "Failed to delete promo code." });
+        }
       },
     });
   };
 
-  const editPromo = (name) => {
+  const editPromo = (item) => {
     showToast({
       tone: "info",
-      title: `${name} is ready for editing.`,
+      title: `${item.name} is connected to the backend and ready for editing.`,
     });
   };
 
@@ -287,7 +342,7 @@ export default function PromoCodesPage() {
 
       <div className="mt-5 space-y-5">
         <PromoTable
-          title="Promo list"
+          title={loading ? "Loading promo list..." : "Promo list"}
           items={promoCodes}
           onToggle={togglePromo}
           onDelete={deletePromo}
@@ -324,24 +379,98 @@ export default function PromoCodesPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="mt-5 grid gap-4 sm:grid-cols-2">
-              <Field label="Code name" name="name" value={form.name} onChange={handleChange} placeholder="WELCOME10" />
-              <Field label="Discount type" name="discountType" value={form.discountType} onChange={handleChange} as="select" options={[["percentage", "Percentage"], ["amount", "Amount"]]} />
-              <Field label="Discount value" name="discountValue" value={form.discountValue} onChange={handleChange} type="number" min="0" />
-              <Field label="Minimum order" name="minOrder" value={form.minOrder} onChange={handleChange} type="number" min="0" />
-              <Field label="Max amount" name="maxAmount" value={form.maxAmount} onChange={handleChange} type="number" min="0" />
-              <Field label="Scope" name="scopeType" value={form.scopeType} onChange={handleChange} as="select" options={Object.entries(scopeLabels).map(([value, label]) => [value, label])} />
-              <Field label="Usage limit per user" name="usageLimitPerUser" value={form.usageLimitPerUser} onChange={handleChange} type="number" min="1" />
-              <Field label="Total usage limit" name="totalUsageLimit" value={form.totalUsageLimit} onChange={handleChange} type="number" min="1" />
-              <Field label="Start date" name="startDate" value={form.startDate} onChange={handleChange} type="date" />
-              <Field label="Expiry date" name="expiryDate" value={form.expiryDate} onChange={handleChange} type="date" />
+              <Field
+                label="Code name"
+                name="name"
+                value={form.name}
+                onChange={handleChange}
+                placeholder="WELCOME10"
+              />
+              <Field
+                label="Discount type"
+                name="discountType"
+                value={form.discountType}
+                onChange={handleChange}
+                as="select"
+                options={[
+                  ["percentage", "Percentage"],
+                  ["amount", "Amount"],
+                ]}
+              />
+              <Field
+                label="Discount value"
+                name="discountValue"
+                value={form.discountValue}
+                onChange={handleChange}
+                type="number"
+                min="0"
+              />
+              <Field
+                label="Minimum order"
+                name="minOrder"
+                value={form.minOrder}
+                onChange={handleChange}
+                type="number"
+                min="0"
+              />
+              <Field
+                label="Max amount"
+                name="maxAmount"
+                value={form.maxAmount}
+                onChange={handleChange}
+                type="number"
+                min="0"
+              />
+              <Field
+                label="Scope"
+                name="scopeType"
+                value={form.scopeType}
+                onChange={handleChange}
+                as="select"
+                options={Object.entries(scopeLabels).map(([value, label]) => [
+                  value,
+                  label,
+                ])}
+              />
+              <Field
+                label="Usage limit per user"
+                name="usageLimitPerUser"
+                value={form.usageLimitPerUser}
+                onChange={handleChange}
+                type="number"
+                min="1"
+              />
+              <Field
+                label="Total usage limit"
+                name="totalUsageLimit"
+                value={form.totalUsageLimit}
+                onChange={handleChange}
+                type="number"
+                min="1"
+              />
+              <Field
+                label="Start date"
+                name="startDate"
+                value={form.startDate}
+                onChange={handleChange}
+                type="date"
+              />
+              <Field
+                label="Expiry date"
+                name="expiryDate"
+                value={form.expiryDate}
+                onChange={handleChange}
+                type="date"
+              />
 
               <div className="sm:col-span-2 flex justify-end">
                 <button
                   type="submit"
-                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover"
+                  disabled={saving}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   <Icon name="check" className="h-4 w-4" />
-                  Save code
+                  {saving ? "Saving..." : "Save code"}
                 </button>
               </div>
             </form>
@@ -349,49 +478,5 @@ export default function PromoCodesPage() {
         ) : null}
       </div>
     </DashboardShell>
-  );
-}
-
-function Field({
-  label,
-  name,
-  value,
-  onChange,
-  type = "text",
-  as = "input",
-  options = [],
-  min,
-  placeholder,
-}) {
-  return (
-    <label className="block">
-      <span className="text-xs font-black uppercase tracking-[0.22em] text-main/75">
-        {label}
-      </span>
-      {as === "select" ? (
-        <select
-          name={name}
-          value={value}
-          onChange={onChange}
-          className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-main"
-        >
-          {options.map(([optionValue, optionLabel]) => (
-            <option key={optionValue} value={optionValue}>
-              {optionLabel}
-            </option>
-          ))}
-        </select>
-      ) : (
-        <input
-          name={name}
-          value={value}
-          onChange={onChange}
-          type={type}
-          min={min}
-          placeholder={placeholder}
-          className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-300 focus:border-main"
-        />
-      )}
-    </label>
   );
 }

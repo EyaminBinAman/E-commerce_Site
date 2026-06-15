@@ -59,7 +59,12 @@ const isInvalidAnimalId = (id, res) => {
 
 const getAnimals = async (req, res, next) => {
   try {
-    const animals = await Animal.find({ isActive: true }).sort({ createdAt: -1 });
+    const includeInactive = req.query.includeInactive === "true";
+    const filter = includeInactive
+      ? { isDeleted: { $ne: true } }
+      : { isActive: true, isDeleted: { $ne: true } };
+
+    const animals = await Animal.find(filter).sort({ createdAt: -1 });
 
     return res.status(200).json({
       success: true,
@@ -86,9 +91,23 @@ const postAnimal = async (req, res, next) => {
     const existingAnimal = await findAnimalByName(trimmedName);
 
     if (existingAnimal) {
-      return res.status(400).json({
-        success: false,
-        message: "This animal already exists",
+      if (existingAnimal.isActive && !existingAnimal.isDeleted) {
+        return res.status(400).json({
+          success: false,
+          message: "This animal already exists",
+        });
+      }
+
+      existingAnimal.name = trimmedName;
+      existingAnimal.slug = await createUniqueSlug(trimmedName, existingAnimal._id);
+      existingAnimal.isDeleted = false;
+      existingAnimal.isActive = true;
+      await existingAnimal.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Animal restored successfully",
+        animal: existingAnimal,
       });
     }
 

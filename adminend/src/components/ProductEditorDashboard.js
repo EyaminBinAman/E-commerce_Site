@@ -12,6 +12,7 @@ const emptyForm = {
   name: "",
   description: "",
   category: "",
+  animal: "",
   brand: "",
   price: "",
   discountPrice: "",
@@ -31,6 +32,27 @@ function Field({ label, children }) {
   );
 }
 
+function SelectField({ label, value, onChange, options, placeholder, disabled, name }) {
+  return (
+    <Field label={label}>
+      <select
+        name={name}
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main disabled:cursor-not-allowed disabled:bg-slate-50"
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
+}
+
 export default function ProductEditorDashboard({ mode = "create" }) {
   const isUpdate = mode === "update";
   const searchParams = useSearchParams();
@@ -38,11 +60,49 @@ export default function ProductEditorDashboard({ mode = "create" }) {
   const { showToast } = useToast();
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(isUpdate && !!slug);
+  const [optionsLoading, setOptionsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [offerEnabled, setOfferEnabled] = useState(false);
   const [markStockOut, setMarkStockOut] = useState(false);
   const [isActive, setIsActive] = useState(true);
   const [isFeatured, setIsFeatured] = useState(false);
+  const [categories, setCategories] = useState([]);
+  const [animals, setAnimals] = useState([]);
+  const [brands, setBrands] = useState([]);
+
+  useEffect(() => {
+    let alive = true;
+
+    Promise.all([
+      adminApi("/categories/get-categories"),
+      adminApi("/brands/get-brands"),
+      adminApi("/animals/get-animals"),
+    ])
+      .then(([categoryData, brandData, animalData]) => {
+        if (!alive) {
+          return;
+        }
+
+        setCategories(categoryData.categories || categoryData.data?.categories || []);
+        setBrands(brandData.brands || brandData.data?.brands || []);
+        setAnimals(animalData.animals || animalData.data?.animals || []);
+      })
+      .catch((error) => {
+        showToast({
+          tone: "danger",
+          title: error.message || "Failed to load dropdown options.",
+        });
+      })
+      .finally(() => {
+        if (alive) {
+          setOptionsLoading(false);
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [showToast]);
 
   useEffect(() => {
     if (!isUpdate || !slug) {
@@ -60,6 +120,7 @@ export default function ProductEditorDashboard({ mode = "create" }) {
           name: product.name || "",
           description: product.description || "",
           category: product.category?.slug || product.category?.name || "",
+          animal: product.animal?.slug || product.animal?.name || "",
           brand: product.brand?.slug || product.brand?.name || "",
           price: String(product.price ?? ""),
           discountPrice: String(product.discountPrice ?? ""),
@@ -92,7 +153,12 @@ export default function ProductEditorDashboard({ mode = "create" }) {
   };
 
   const saveProduct = () => {
-    if (!form.name.trim() || !form.description.trim() || !form.category.trim() || !form.brand.trim()) {
+    if (
+      !form.name.trim() ||
+      !form.description.trim() ||
+      !form.category.trim() ||
+      !form.brand.trim()
+    ) {
       showToast({
         tone: "warning",
         title: "Name, description, category, and brand are required.",
@@ -114,6 +180,7 @@ export default function ProductEditorDashboard({ mode = "create" }) {
       name: form.name.trim(),
       description: form.description.trim(),
       category: form.category.trim(),
+      animal: form.animal.trim(),
       brand: form.brand.trim(),
       price: Number(form.price),
       discountPrice: form.discountPrice ? Number(form.discountPrice) : null,
@@ -206,26 +273,42 @@ export default function ProductEditorDashboard({ mode = "create" }) {
               </Field>
 
               <div className="grid gap-3 md:grid-cols-2">
-                <Field label="Category">
-                  <input
-                    name="category"
-                    value={form.category}
-                    onChange={handleChange}
-                    type="text"
-                    placeholder="Dog Food"
-                    className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
-                  />
-                </Field>
-                <Field label="Brand">
-                  <input
-                    name="brand"
-                    value={form.brand}
-                    onChange={handleChange}
-                    type="text"
-                    placeholder="Smart Heart"
-                    className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
-                  />
-                </Field>
+                <SelectField
+                  label="Category"
+                  name="category"
+                  value={form.category}
+                  onChange={handleChange}
+                  disabled={optionsLoading}
+                  placeholder={optionsLoading ? "Loading categories..." : "Select category"}
+                  options={categories.map((category) => ({
+                    value: category.slug || category._id,
+                    label: category.name || category.slug,
+                  }))}
+                />
+                <SelectField
+                  label="Animal"
+                  name="animal"
+                  value={form.animal}
+                  onChange={handleChange}
+                  disabled={optionsLoading}
+                  placeholder={optionsLoading ? "Loading animals..." : "Select animal"}
+                  options={animals.map((animal) => ({
+                    value: animal.slug || animal._id,
+                    label: animal.name || animal.slug,
+                  }))}
+                />
+                <SelectField
+                  label="Brand"
+                  name="brand"
+                  value={form.brand}
+                  onChange={handleChange}
+                  disabled={optionsLoading}
+                  placeholder={optionsLoading ? "Loading brands..." : "Select brand"}
+                  options={brands.map((brand) => ({
+                    value: brand.slug || brand._id,
+                    label: brand.name || brand.slug,
+                  }))}
+                />
                 <Field label="Price">
                   <input
                     name="price"
@@ -336,7 +419,7 @@ export default function ProductEditorDashboard({ mode = "create" }) {
               Pricing Note
             </p>
             <ul className="mt-3 space-y-2 text-sm font-semibold leading-6 text-slate-500">
-              <li>Category and brand can be entered by name or slug.</li>
+              <li>Category, animal, and brand are loaded from the backend.</li>
               <li>Product stock out is derived from stock quantity.</li>
               <li>Images and tags accept comma-separated values.</li>
             </ul>

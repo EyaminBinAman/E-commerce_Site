@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 
 const Product = require("../../models/Product");
 const Category = require("../../models/Category");
+const Animal = require("../../models/Animal");
 const Brand = require("../../models/Brand");
 
 const parseBoolean = (value) => {
@@ -111,10 +112,33 @@ const resolveBrandRef = async (value) => {
   return null;
 };
 
+const resolveAnimalRef = async (value) => {
+  if (value === undefined || value === null) return null;
+
+  if (typeof value === "string" && !value.trim()) return null;
+
+  if (validateObjectId(value)) {
+    return Animal.findById(value);
+  }
+
+  if (typeof value === "string") {
+    const trimmedValue = value.trim();
+    const bySlug = await Animal.findOne({ slug: trimmedValue.toLowerCase() });
+    if (bySlug) return bySlug;
+
+    return Animal.findOne({
+      name: { $regex: `^${escapeRegex(trimmedValue)}$`, $options: "i" },
+    });
+  }
+
+  return null;
+};
+
 const getProducts = async (req, res, next) => {
   try {
     const {
       search,
+      animal,
       category,
       brand,
       minPrice,
@@ -139,6 +163,11 @@ const getProducts = async (req, res, next) => {
     if (category) {
       const matchedCategory = await resolveCategoryRef(category);
       query.category = matchedCategory?._id || null;
+    }
+
+    if (animal) {
+      const matchedAnimal = await resolveAnimalRef(animal);
+      query.animal = matchedAnimal?._id || null;
     }
 
     if (brand) {
@@ -189,6 +218,7 @@ const getProducts = async (req, res, next) => {
     const [products, totalProducts] = await Promise.all([
       Product.find(query)
         .populate("category", "name slug")
+        .populate("animal", "name slug")
         .populate("brand", "name slug")
         .sort(sortOption)
         .skip(skip)
@@ -277,6 +307,7 @@ const getSingleProduct = async (req, res, next) => {
       isActive: true,
     })
       .populate("category", "name slug")
+      .populate("animal", "name slug")
       .populate("brand", "name slug");
 
     if (!product) {
@@ -312,6 +343,7 @@ const createProduct = async (req, res, next) => {
     const {
       name,
       description,
+      animal,
       category,
       brand,
       price,
@@ -346,6 +378,8 @@ const createProduct = async (req, res, next) => {
         message: "Valid category (id, slug, or name) is required",
       });
     }
+
+    const resolvedAnimal = await resolveAnimalRef(animal);
 
     const resolvedBrand = await resolveBrandRef(brand);
     if (!resolvedBrand) {
@@ -404,6 +438,7 @@ const createProduct = async (req, res, next) => {
       name,
       description,
       category: resolvedCategory._id,
+      animal: resolvedAnimal?._id || null,
       brand: resolvedBrand._id,
       price: parsedPrice,
       discountPrice: parsedDiscountPrice,
@@ -436,6 +471,7 @@ const updateProduct = async (req, res, next) => {
     const {
       name,
       description,
+      animal,
       category,
       brand,
       price,
@@ -490,6 +526,18 @@ const updateProduct = async (req, res, next) => {
       }
 
       product.category = resolvedCategory._id;
+    }
+
+    if (animal !== undefined) {
+      const resolvedAnimal = await resolveAnimalRef(animal);
+      if (animal && !resolvedAnimal) {
+        return res.status(400).json({
+          success: false,
+          message: "Valid animal (id, slug, or name) is required",
+        });
+      }
+
+      product.animal = resolvedAnimal?._id || null;
     }
 
     if (brand !== undefined) {
@@ -587,6 +635,7 @@ const updateProduct = async (req, res, next) => {
 
     const updatedProduct = await Product.findById(product._id)
       .populate("category", "name slug")
+      .populate("animal", "name slug")
       .populate("brand", "name slug");
 
     return res.status(200).json({

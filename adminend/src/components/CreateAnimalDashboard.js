@@ -1,12 +1,40 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
 import DashboardShell from "@/components/DashboardShell";
 import { useToast } from "@/components/ui/toast";
+import { adminApi } from "@/lib/adminApi";
 
 export default function CreateAnimalDashboard() {
   const { showToast } = useToast();
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!name.trim()) {
+      showToast({ tone: "warning", title: "Animal name is required." });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await adminApi("/animals/post-animals", {
+        method: "POST",
+        body: JSON.stringify({ name: name.trim() }),
+      });
+
+      setName("");
+      showToast({ tone: "success", title: "Animal created successfully." });
+    } catch (error) {
+      showToast({ tone: "danger", title: error.message || "Failed to create animal." });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <DashboardShell activeItem="Categories">
@@ -35,50 +63,35 @@ export default function CreateAnimalDashboard() {
 
       <div className="mt-5 grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-[24px] border border-neutral-200 bg-white p-5 shadow-lg shadow-main/5">
-          <form className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-black uppercase tracking-wide text-main/80">
                 Animal name
               </label>
               <input
                 type="text"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
                 placeholder="Dog"
                 className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-black uppercase tracking-wide text-main/80">
-                Slug
-              </label>
-              <input
-                type="text"
-                placeholder="dog"
-                className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
-              />
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={saving}
+                className="h-10 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {saving ? "Saving..." : "Create Animal"}
+              </button>
+              <Link
+                href="/dashboard/categories"
+                className="text-sm font-black text-slate-500 transition hover:text-main"
+              >
+                Cancel
+              </Link>
             </div>
-
-            <div>
-              <label className="block text-xs font-black uppercase tracking-wide text-main/80">
-                Animal icon
-              </label>
-              <div className="mt-1.5 flex items-center gap-3">
-                <button
-                  type="button"
-                  className="h-9 rounded-xl bg-main px-3 text-xs font-black text-white transition hover:bg-mainHover"
-                >
-                  Choose file
-                </button>
-                <span className="text-sm font-semibold text-slate-400">
-                  No file chosen
-                </span>
-              </div>
-            </div>
-
-            <label className="inline-flex items-center gap-2 pt-1 text-sm font-semibold text-slate-600">
-              <input type="checkbox" defaultChecked className="h-4 w-4 accent-[#173F31]" />
-              Animal is active
-            </label>
           </form>
         </div>
 
@@ -89,32 +102,9 @@ export default function CreateAnimalDashboard() {
             </p>
             <ul className="mt-3 space-y-2 text-sm font-semibold leading-6 text-slate-500">
               <li>Animal names should be unique.</li>
-              <li>Slug should be lowercase and URL-friendly.</li>
-              <li>Disabling an animal can hide related categories in the app.</li>
+              <li>Slug is generated automatically from the name.</li>
+              <li>Disabling an animal hides related categories in the app.</li>
             </ul>
-          </div>
-
-          <div className="rounded-[24px] border border-neutral-200 bg-white p-4 shadow-lg shadow-main/5">
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() =>
-                  showToast({
-                    tone: "success",
-                    title: "Animal created successfully.",
-                  })
-                }
-                className="h-10 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover"
-              >
-                Create Animal
-              </button>
-              <Link
-                href="/dashboard/categories"
-                className="text-sm font-black text-slate-500 transition hover:text-main"
-              >
-                Cancel
-              </Link>
-            </div>
           </div>
         </div>
       </div>

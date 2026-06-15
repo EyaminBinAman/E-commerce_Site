@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 import Container from "@/components/Container";
 import {
@@ -8,8 +11,9 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
+import { apiRequest } from "@/lib/api";
 
-const brands = [
+const fallbackBrands = [
   {
     name: "Orijen",
     description: "Dog & cat nutrition",
@@ -37,6 +41,25 @@ const brands = [
 ];
 
 export default function PopularBrands() {
+  const [brands, setBrands] = useState(fallbackBrands);
+
+  useEffect(() => {
+    apiRequest("/brands/get-brands")
+      .then((data) => {
+        const nextBrands = (data.brands || []).slice(0, 6).map((brand) => ({
+          name: brand.name,
+          description: Array.isArray(brand.animalNames) && brand.animalNames.length
+            ? brand.animalNames.join(", ")
+            : "Popular brand",
+        }));
+
+        if (nextBrands.length) {
+          setBrands(nextBrands);
+        }
+      })
+      .catch(() => setBrands(fallbackBrands));
+  }, []);
+
   return (
     <section className="bg-[#eef8f2]">
       <Container>

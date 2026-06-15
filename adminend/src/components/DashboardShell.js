@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 const navGroups = [
   {
     title: "Overview",
@@ -298,7 +300,10 @@ function Topbar() {
           <Icon name="bell" className="h-5 w-5" />
           <span className="absolute right-2 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[10px] font-black text-white">1</span>
         </button>
-        <div className="flex h-14 items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-3 shadow-sm">
+        <Link
+          href="/dashboard/profile"
+          className="flex h-14 items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-3 shadow-sm transition hover:border-main/20 hover:bg-mainSoft/30"
+        >
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-main font-black text-white">
             E
           </div>
@@ -306,7 +311,7 @@ function Topbar() {
             <p className="text-sm font-black text-main">Eyamin</p>
             <p className="text-xs font-bold text-slate-400">Profile</p>
           </div>
-        </div>
+        </Link>
       </div>
     </header>
   );

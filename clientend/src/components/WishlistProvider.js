@@ -2,78 +2,93 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-const WishlistContext = createContext(null);
-const storageKey = "pawtail-wishlist";
+import { apiRequest } from "@/lib/api";
 
-const normalizeProduct = (product) => ({
-  _id: product._id,
-  name: product.name,
-  slug: product.slug,
-  image: product.images?.[0] || product.image || null,
-  price: product.price,
-  discountPrice: product.discountPrice,
-  brand: product.brand?.name || product.brand || null,
-});
+const WishlistContext = createContext(null);
+
+function normalizeWishlistItems(items = []) {
+  return items.map((item) => ({
+    _id: item._id,
+    name: item.name,
+    slug: item.slug,
+    image: item.image || item.images?.[0] || null,
+    price: item.price,
+    discountPrice: item.discountPrice,
+    brand: item.brand || item.brand?.name || null,
+  }));
+}
 
 export function WishlistProvider({ children }) {
   const [items, setItems] = useState([]);
   const [isReady, setIsReady] = useState(false);
 
-  useEffect(() => {
+  const refreshWishlist = useCallback(async () => {
     try {
-      const storedItems = JSON.parse(localStorage.getItem(storageKey) || "[]");
-      setItems(Array.isArray(storedItems) ? storedItems : []);
-    } catch (_error) {
-      setItems([]);
+      const data = await apiRequest("/wishlist/get-wishlist");
+      const nextItems = normalizeWishlistItems(data.wishlist?.items || []);
+      setItems(nextItems);
+      return nextItems;
+    } catch (error) {
+      if (error.status === 401) {
+        setItems([]);
+        return [];
+      }
+      throw error;
     } finally {
       setIsReady(true);
     }
   }, []);
 
   useEffect(() => {
-    if (isReady) {
-      localStorage.setItem(storageKey, JSON.stringify(items));
-    }
-  }, [isReady, items]);
+    refreshWishlist().catch(() => undefined);
+  }, [refreshWishlist]);
 
   const isWishlisted = useCallback(
     (productId) => items.some((item) => item._id === productId),
     [items]
   );
 
-  const addToWishlist = useCallback((product) => {
-    const normalizedProduct = normalizeProduct(product);
-
-    setItems((currentItems) => {
-      if (currentItems.some((item) => item._id === normalizedProduct._id)) {
-        return currentItems;
-      }
-
-      return [normalizedProduct, ...currentItems];
+  const addToWishlist = useCallback(async (product) => {
+    const data = await apiRequest("/wishlist/add-to-wishlist", {
+      method: "POST",
+      body: JSON.stringify({ productId: product._id }),
     });
+
+    const nextItems = normalizeWishlistItems(data.wishlist?.items || []);
+    setItems(nextItems);
+    return nextItems;
   }, []);
 
-  const removeFromWishlist = useCallback((productId) => {
-    setItems((currentItems) =>
-      currentItems.filter((item) => item._id !== productId)
-    );
+  const removeFromWishlist = useCallback(async (productId) => {
+    const data = await apiRequest(`/wishlist/remove-wishlist-item/${productId}`, {
+      method: "DELETE",
+    });
+
+    const nextItems = normalizeWishlistItems(data.wishlist?.items || []);
+    setItems(nextItems);
+    return nextItems;
   }, []);
 
   const toggleWishlist = useCallback(
-    (product) => {
+    async (product) => {
       if (isWishlisted(product._id)) {
-        removeFromWishlist(product._id);
+        await removeFromWishlist(product._id);
         return false;
       }
 
-      addToWishlist(product);
+      await addToWishlist(product);
       return true;
     },
     [addToWishlist, isWishlisted, removeFromWishlist]
   );
 
-  const clearWishlist = useCallback(() => {
-    setItems([]);
+  const clearWishlist = useCallback(async () => {
+    const data = await apiRequest("/wishlist/clear-wishlist", {
+      method: "DELETE",
+    });
+    const nextItems = normalizeWishlistItems(data.wishlist?.items || []);
+    setItems(nextItems);
+    return nextItems;
   }, []);
 
   const value = useMemo(
@@ -86,6 +101,7 @@ export function WishlistProvider({ children }) {
       removeFromWishlist,
       toggleWishlist,
       clearWishlist,
+      refreshWishlist,
     }),
     [
       addToWishlist,
@@ -93,6 +109,7 @@ export function WishlistProvider({ children }) {
       isReady,
       isWishlisted,
       items,
+      refreshWishlist,
       removeFromWishlist,
       toggleWishlist,
     ]

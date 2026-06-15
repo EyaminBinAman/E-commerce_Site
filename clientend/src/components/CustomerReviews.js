@@ -1,6 +1,11 @@
-import Container from "@/components/Container";
+"use client";
 
-const reviews = [
+import { useEffect, useState } from "react";
+
+import Container from "@/components/Container";
+import { apiRequest } from "@/lib/api";
+
+const fallbackReviews = [
   {
     name: "Nusrat Jahan",
     location: "Dhaka",
@@ -22,6 +27,35 @@ const reviews = [
 ];
 
 export default function CustomerReviews() {
+  const [reviews, setReviews] = useState(fallbackReviews);
+
+  useEffect(() => {
+    let alive = true;
+
+    apiRequest("/reviews/get-reviews")
+      .then((data) => {
+        if (!alive) return;
+
+        const nextReviews = (data.reviews || []).slice(0, 3).map((review) => ({
+          name: review.customerName,
+          location: review.product?.name || "Verified buyer",
+          rating: Number(review.rating || 0).toFixed(1),
+          text: review.comment,
+        }));
+
+        if (nextReviews.length) {
+          setReviews(nextReviews);
+        }
+      })
+      .catch(() => {
+        if (alive) setReviews(fallbackReviews);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   return (
     <section className="bg-[#fbf7f1]">
       <Container>

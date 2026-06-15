@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { useToast } from "@/components/ui/toast";
-import { loadAdminSession, saveAdminSession } from "@/lib/adminSession";
+import { loginAdmin } from "@/lib/adminApi";
 
 const initialForm = {
   email: "",
@@ -15,10 +15,8 @@ const initialForm = {
 export default function LoginPage() {
   const router = useRouter();
   const { showToast } = useToast();
-  const [form, setForm] = useState(() => ({
-    ...initialForm,
-    email: loadAdminSession().email || "",
-  }));
+  const [form, setForm] = useState(initialForm);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (event) => {
     const { name, type, checked, value } = event.target;
@@ -30,31 +28,33 @@ export default function LoginPage() {
 
   const handleSubmit = (event) => {
     event.preventDefault();
+    if (isSubmitting) {
+      return;
+    }
 
     if (!form.email.trim() || !form.password.trim()) {
       showToast({ tone: "warning", title: "Enter email and password." });
       return;
     }
 
-    const nextSession = {
-      name: form.email.split("@")[0].replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-      email: form.email.trim().toLowerCase(),
-      title: "Administrator",
-      bio: "Signed in from the admin console.",
-      status: "Active",
-      lastLogin: new Date().toLocaleString("en-GB", {
-        dateStyle: "long",
-        timeStyle: "short",
-      }),
-      initials: form.email
-        .split("@")[0]
-        .slice(0, 2)
-        .toUpperCase(),
-    };
-
-    saveAdminSession(nextSession);
-    showToast({ tone: "success", title: "Logged in." });
-    router.push("/dashboard/profile");
+    setIsSubmitting(true);
+    loginAdmin({
+      email: form.email.trim(),
+      password: form.password,
+    })
+      .then(() => {
+        showToast({ tone: "success", title: "Logged in." });
+        router.push("/dashboard");
+      })
+      .catch((error) => {
+        showToast({
+          tone: "danger",
+          title: error.message || "Login failed.",
+        });
+      })
+      .finally(() => {
+        setIsSubmitting(false);
+      });
   };
 
   return (
@@ -130,9 +130,10 @@ export default function LoginPage() {
 
               <button
                 type="submit"
+                disabled={isSubmitting}
                 className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover"
               >
-                Sign in
+                {isSubmitting ? "Signing in..." : "Sign in"}
               </button>
             </form>
 

@@ -1,9 +1,21 @@
 import Link from "next/link";
 
-import { brands } from "@/data/categoryPageData";
 import { slugifyCategory } from "@/data/categoryPageData";
 
-export default function CategorySidebar({ animal, activeSubcategory }) {
+export default function CategorySidebar({ animal, activeSubcategory, brands = [] }) {
+  const normalizedBrands = brands
+    .map((brand) => {
+      if (typeof brand === "string") {
+        return { key: brand, label: brand };
+      }
+
+      const label = brand?.name || brand?.slug || "";
+      const key = brand?.slug || brand?._id || label;
+
+      return label ? { key, label } : null;
+    })
+    .filter(Boolean);
+
   return (
     <aside className="rounded-2xl bg-white p-6 shadow-[0_16px_45px_rgba(23,63,49,0.08)] lg:sticky lg:top-[12.5rem] lg:self-start">
       <h2 className="text-2xl font-black text-main">
@@ -50,13 +62,13 @@ export default function CategorySidebar({ animal, activeSubcategory }) {
       <div className="mt-8 border-t border-neutral-200 pt-7">
         <h3 className="text-lg font-black text-main">Brand</h3>
         <div className="mt-5 space-y-3">
-          {brands.map((brand) => (
+          {normalizedBrands.map((brand) => (
             <label
-              key={brand}
+              key={brand.key}
               className="flex items-center gap-3 text-base font-medium text-main/70"
             >
               <input type="checkbox" className="h-4 w-4 accent-main" />
-              {brand}
+              {brand.label}
             </label>
           ))}
         </div>
@@ -65,22 +77,20 @@ export default function CategorySidebar({ animal, activeSubcategory }) {
       <div className="mt-8 border-t border-neutral-200 pt-7">
         <h3 className="text-lg font-black text-main">Rating</h3>
         <div className="mt-5 space-y-3">
-          {["All ratings", "5 stars only", "4 stars & up"].map(
-            (rating, index) => (
-              <label
-                key={rating}
-                className="flex items-center gap-3 text-base font-medium text-main/70"
-              >
-                <input
-                  type="radio"
-                  name="rating"
-                  defaultChecked={index === 0}
-                  className="h-4 w-4 accent-main"
-                />
-                {rating}
-              </label>
-            )
-          )}
+          {["All ratings", "5 stars only", "4 stars & up"].map((rating, index) => (
+            <label
+              key={rating}
+              className="flex items-center gap-3 text-base font-medium text-main/70"
+            >
+              <input
+                type="radio"
+                name="rating"
+                defaultChecked={index === 0}
+                className="h-4 w-4 accent-main"
+              />
+              {rating}
+            </label>
+          ))}
         </div>
       </div>
 
