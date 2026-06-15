@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useAdminAuth } from "@/components/AuthGate";
 import LogoutButton from "@/components/LogoutButton";
 import BrandLogo from "@/components/BrandLogo";
 
@@ -33,6 +35,12 @@ const navGroups = [
       { label: "Promo Codes", icon: "ticket", href: "/dashboard/promo-codes" },
       { label: "Promo Banners", icon: "image", href: "/dashboard/banners" },
       { label: "Reviews & Replies", icon: "star", href: "/dashboard/reviews" },
+    ],
+  },
+  {
+    title: "Account",
+    items: [
+      { label: "My Profile", icon: "user", href: "/dashboard/profile" },
     ],
   },
 ];
@@ -251,20 +259,35 @@ function Sidebar({ activeItem }) {
             <div className="mt-3 space-y-1.5">
               {group.items.map((item) => {
                 const isActive = item.label === activeItem;
+                const className = `flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-extrabold transition ${
+                  isActive
+                    ? "bg-mainSoft text-main shadow-inner"
+                    : "text-slate-500 hover:bg-mainSoft/60 hover:text-main"
+                }`;
+
+                if (item.href === "#") {
+                  return (
+                    <button
+                      type="button"
+                      key={`${group.title}-${item.label}`}
+                      className={`${className} w-full cursor-not-allowed opacity-50`}
+                      disabled
+                    >
+                      <Icon name={item.icon} className="h-5 w-5" />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                }
 
                 return (
-                  <a
+                  <Link
                     href={item.href}
                     key={`${group.title}-${item.label}`}
-                    className={`flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-extrabold transition ${
-                      isActive
-                        ? "bg-mainSoft text-main shadow-inner"
-                        : "text-slate-500 hover:bg-mainSoft/60 hover:text-main"
-                    }`}
+                    className={className}
                   >
                     <Icon name={item.icon} className="h-5 w-5" />
                     <span>{item.label}</span>
-                  </a>
+                  </Link>
                 );
               })}
             </div>
@@ -276,6 +299,15 @@ function Sidebar({ activeItem }) {
 }
 
 function Topbar() {
+  const { admin } = useAdminAuth();
+  const adminName = admin?.name || admin?.email?.split("@")[0] || "Admin";
+  const adminInitials = adminName
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-neutral-200 bg-mainSoft/60 px-3 backdrop-blur md:px-6 lg:px-8">
       <div className="flex items-center gap-3 lg:hidden">
@@ -292,15 +324,18 @@ function Topbar() {
           <Icon name="bell" className="h-5 w-5" />
           <span className="absolute right-2 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[10px] font-black text-white">1</span>
         </button>
-        <div className="flex h-14 items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-3 shadow-sm">
+        <Link
+          href="/dashboard/profile"
+          className="flex h-14 items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-3 shadow-sm transition hover:bg-mainSoft/60"
+        >
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-main font-black text-white">
-            E
+            {adminInitials || "A"}
           </div>
           <div className="hidden pr-1 sm:block">
-            <p className="text-sm font-black text-main">Eyamin</p>
+            <p className="text-sm font-black text-main">{adminName}</p>
             <p className="text-xs font-bold text-slate-400">Profile</p>
           </div>
-        </div>
+        </Link>
       </div>
     </header>
   );

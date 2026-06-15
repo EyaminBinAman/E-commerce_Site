@@ -18,6 +18,31 @@ export function AuthGate({ children }) {
 
   useEffect(() => {
     let active = true;
+
+    const redirectTo = (path) => {
+      router.replace(path);
+
+      if (typeof window !== "undefined") {
+        window.setTimeout(() => {
+          if (window.location.pathname !== path) {
+            window.location.replace(path);
+          }
+        }, 250);
+      }
+    };
+
+    if (admin) {
+      setLoading(false);
+
+      if (isPublicPath) {
+        redirectTo("/dashboard");
+      }
+
+      return () => {
+        active = false;
+      };
+    }
+
     setLoading(true);
 
     async function checkAuth() {
@@ -29,7 +54,7 @@ export function AuthGate({ children }) {
           setAdmin(null);
 
           if (!isPublicPath) {
-            router.replace("/login");
+            redirectTo("/login");
           }
 
           return;
@@ -38,14 +63,14 @@ export function AuthGate({ children }) {
         setAdmin(data.user);
 
         if (isPublicPath) {
-          router.replace("/dashboard");
+          redirectTo("/dashboard");
         }
       } catch {
         if (!active) return;
         setAdmin(null);
 
         if (!isPublicPath) {
-          router.replace("/login");
+          redirectTo("/login");
         }
       } finally {
         if (active) {
@@ -59,7 +84,7 @@ export function AuthGate({ children }) {
     return () => {
       active = false;
     };
-  }, [isPublicPath, pathname, router]);
+  }, [admin, isPublicPath, router]);
 
   const value = useMemo(
     () => ({

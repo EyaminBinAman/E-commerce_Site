@@ -70,7 +70,6 @@ export default function LoginPage() {
 
       showToast({ tone: "success", title: "Logged in." });
       router.replace("/dashboard");
-      router.refresh();
     } catch (error) {
       showToast({
         tone: "danger",

@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 
 const Order = require("../../models/Order");
+const PromoCode = require("../../models/PromoCode");
 
 const sendSuccess = (res, statusCode, message, data) => {
   return res.status(statusCode).json({
@@ -60,6 +61,8 @@ const getFirstNumber = (...values) => {
 const getFirstValue = (...values) => {
   return values.find((value) => value !== undefined && value !== null && value !== "");
 };
+
+const roundMoney = (value) => Math.round((Number(value) || 0) * 100) / 100;
 
 const findVariant = (product, variantId) => {
   if (!variantId) {
@@ -299,15 +302,138 @@ const generateOrderNumber = async (session) => {
   return `ORD-${new mongoose.Types.ObjectId().toString().toUpperCase()}`;
 };
 
-// Promo integration helpers
-const calculatePromoDiscount = async ({ promoCode }) => {
-  if (!promoCode) {
-    return 0;
+const userHasPreviousOrders = async ({ userId, session }) => {
+  const order = await Order.exists({ user: userId }).session(session);
+  return Boolean(order);
+};
+
+const getUserUsageCount = (promoCode, userId) => {
+  const usage = (promoCode.usageRecords || []).find(
+    (record) => record.user?.toString() === userId.toString()
+  );
+
+  return usage?.count || 0;
+};
+
+const validatePromoScope = ({ promo, orderItems, user }) => {
+  const scope = promo.scope || { type: "all" };
+  const scopeType = scope.type || "all";
+
+  if (scopeType === "all" || scopeType === "new-users") {
+    return true;
   }
 
-  // TODO: When Promo is ready, fetch and validate the promo code here.
-  // Keep price authority on the backend and return the calculated discount.
-  return 0;
+  if (scopeType === "users") {
+    return (scope.userIds || []).some((id) => idsMatch(id, user._id));
+  }
+
+  const productIds = new Set(orderItems.map((item) => item.product.toString()));
+  const categoryIds = new Set(
+    orderItems
+      .map((item) => item.category?.toString())
+      .filter(Boolean)
+  );
+
+  if (scopeType === "products" || scopeType === "items") {
+    return [...(scope.productIds || []), ...(scope.itemIds || [])].some((id) =>
+      productIds.has(id.toString())
+    );
+  }
+
+  if (scopeType === "categories") {
+    return (scope.categoryIds || []).some((id) => categoryIds.has(id.toString()));
+  }
+
+  return false;
+};
+
+const calculatePromoDiscount = async ({ promoCode, subtotal, orderItems, user, session }) => {
+  if (!promoCode) {
+    return { promo: null, discount: 0 };
+  }
+
+  const promo = await PromoCode.findOne({
+    nameNormalized: promoCode.trim().toLowerCase(),
+  }).session(session);
+
+  if (!promo) {
+    throw createHttpError(400, "Promo code not found");
+  }
+
+  const now = new Date();
+
+  if (!promo.isActive) {
+    throw createHttpError(400, "Promo code is inactive");
+  }
+
+  if (promo.startDate > now) {
+    throw createHttpError(400, "Promo code has not started yet");
+  }
+
+  if (promo.expiryDate < now) {
+    throw createHttpError(400, "Promo code has expired");
+  }
+
+  if (subtotal < promo.minOrder) {
+    throw createHttpError(400, `Minimum order amount is ${promo.minOrder}`);
+  }
+
+  if (promo.totalUsageLimit && promo.usageCount >= promo.totalUsageLimit) {
+    throw createHttpError(400, "Promo code usage limit reached");
+  }
+
+  if (getUserUsageCount(promo, user._id) >= promo.usageLimitPerUser) {
+    throw createHttpError(400, "You have reached the usage limit for this promo code");
+  }
+
+  if (
+    promo.scope?.type === "new-users" &&
+    (await userHasPreviousOrders({ userId: user._id, session }))
+  ) {
+    throw createHttpError(400, "This promo code is only for new users");
+  }
+
+  if (!validatePromoScope({ promo, orderItems, user })) {
+    throw createHttpError(400, "Promo code is not applicable to this order");
+  }
+
+  const rawDiscount =
+    promo.discountType === "percentage"
+      ? (subtotal * promo.discountValue) / 100
+      : promo.discountValue;
+  const cappedDiscount =
+    promo.maxAmount === null || promo.maxAmount === undefined
+      ? rawDiscount
+      : Math.min(rawDiscount, promo.maxAmount);
+
+  return {
+    promo,
+    discount: roundMoney(Math.min(subtotal, cappedDiscount)),
+  };
+};
+
+const recordPromoUsage = async ({ promo, userId, session }) => {
+  if (!promo) {
+    return;
+  }
+
+  const usage = (promo.usageRecords || []).find((record) =>
+    idsMatch(record.user, userId)
+  );
+
+  if (usage) {
+    usage.count += 1;
+    usage.lastUsedAt = new Date();
+  } else {
+    promo.usageRecords.push({
+      user: userId,
+      count: 1,
+      lastUsedAt: new Date(),
+    });
+  }
+
+  promo.usageCount += 1;
+  await promo.save({ session });
 };
 
 const createOrder = async (req, res, next) => {
@@ -393,6 +519,7 @@ const createOrder = async (req, res, next) => {
 
       orderItems.push({
         product: product._id,
+        category: product.category,
         ...(item.variantId ? { variantId: item.variantId } : {}),
         variantName: getVariantName(variant),
         productName,
@@ -407,7 +534,14 @@ const createOrder = async (req, res, next) => {
     }
 
     const subtotal = orderItems.reduce((sum, item) => sum + item.itemSubtotal, 0);
-    const promoDiscount = await calculatePromoDiscount({ promoCode });
+    const promoResult = await calculatePromoDiscount({
+      promoCode,
+      subtotal,
+      orderItems,
+      user: req.user,
+      session,
+    });
+    const promoDiscount = promoResult.discount;
     const deliveryCharge = 0;
     const grandTotal = subtotal - promoDiscount + deliveryCharge;
     const orderNumber = await generateOrderNumber(session);
@@ -437,6 +571,11 @@ const createOrder = async (req, res, next) => {
       { session }
     );
 
+    await recordPromoUsage({
+      promo: promoResult.promo,
+      userId: req.user._id,
+      session,
+    });
     await reduceStockForItems({ productsById, items, session });
     await session.commitTransaction();
 

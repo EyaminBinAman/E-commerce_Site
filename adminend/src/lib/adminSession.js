@@ -1,17 +1,17 @@
 export const ADMIN_SESSION_KEY = "adminflow-admin-session";
 
 export const DEFAULT_ADMIN_PROFILE = {
-  name: "Eyamin Aman",
-  email: "eyamin.aman@adminflow.local",
-  phone: "+880 1700 000000",
+  name: "Admin User",
+  email: "admin@example.com",
+  phone: "",
   role: "Administrator",
-  title: "Store Operations Lead",
-  bio: "Handles catalog operations, promo campaigns, customer replies, and internal admin workflows.",
-  location: "Dhaka, Bangladesh",
-  timezone: "Asia/Dhaka",
+  title: "Administrator",
+  bio: "Signed in from the admin console.",
+  location: "",
+  timezone: "",
   status: "Active",
-  initials: "EA",
-  lastLogin: "June 12, 2026 09:40",
+  initials: "AU",
+  lastLogin: "",
 };
 
 function canUseStorage() {
