@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+import LogoutButton from "@/components/LogoutButton";
+
 const navGroups = [
   {
     title: "Overview",

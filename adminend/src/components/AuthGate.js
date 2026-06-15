@@ -18,6 +18,7 @@ export function AuthGate({ children }) {
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
 
     async function checkAuth() {
       try {
@@ -58,7 +59,7 @@ export function AuthGate({ children }) {
     return () => {
       active = false;
     };
-  }, [isPublicPath, router]);
+  }, [isPublicPath, pathname, router]);
 
   const value = useMemo(() => ({ admin, setAdmin }), [admin]);
 

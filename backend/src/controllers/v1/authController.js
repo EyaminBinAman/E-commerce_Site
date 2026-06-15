@@ -1,5 +1,7 @@
 const bcrypt = require("bcryptjs");
+const fs = require("fs/promises");
 const jwt = require("jsonwebtoken");
+const path = require("path");
 
 const createMailTransporter = require("../../config/mail");
 const User = require("../../models/User");
@@ -7,6 +9,27 @@ const User = require("../../models/User");
 // Utility functions
 const generateVerificationCode = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+const removeUploadedUserImage = async (profilePic) => {
+  if (!profilePic || !profilePic.startsWith("/uploads/users/")) {
+    return;
+  }
+
+  const usersUploadDir = path.resolve(process.cwd(), "uploads", "users");
+  const imagePath = path.resolve(process.cwd(), profilePic.replace(/^\/+/, ""));
+
+  if (!imagePath.startsWith(`${usersUploadDir}${path.sep}`)) {
+    return;
+  }
+
+  try {
+    await fs.unlink(imagePath);
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw error;
+    }
+  }
 };
 
 // Token generation functions
@@ -664,8 +687,12 @@ const uploadProfileImage = async (req, res, next) => {
     }
 
     const user = req.user;
-    user.profilePic = `/uploads/users/${req.file.filename}`;
+    const previousProfilePic = user.profilePic;
+    const nextProfilePic = `/uploads/users/${req.file.filename}`;
+
+    user.profilePic = nextProfilePic;
     await user.save();
+    await removeUploadedUserImage(previousProfilePic);
 
     return res.status(200).json({
       success: true,

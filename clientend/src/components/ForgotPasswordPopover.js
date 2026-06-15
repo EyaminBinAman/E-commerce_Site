@@ -14,53 +14,88 @@ import {
 
 import Modal from "@/components/ui/modal";
 import { OtpInput } from "@/components/ui/otp-input";
-
-const MOCK_OTP = "123456";
+import { apiRequest } from "@/lib/api";
 
 export default function ForgotPasswordPopover({ open, onClose, defaultEmail = "" }) {
   const [step, setStep] = useState("email");
   const [email, setEmail] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
 
   useEffect(() => {
     if (!open) return;
+    // Reset the modal flow each time the popover is opened.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setStep("email");
     setEmail(defaultEmail);
     setOtp(["", "", "", "", "", ""]);
     setError("");
+    setIsSubmitting(false);
     setShowNew(false);
     setShowConfirm(false);
   }, [open, defaultEmail]);
 
-  const handleEmailSubmit = (event) => {
+  const handleEmailSubmit = async (event) => {
     event.preventDefault();
     setError("");
-    if (!email || !email.includes("@")) {
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail || !normalizedEmail.includes("@")) {
       setError("Please enter a valid email address.");
       return;
     }
-    setStep("otp");
+
+    setIsSubmitting(true);
+
+    try {
+      await apiRequest("/users/forgot-password", {
+        method: "POST",
+        body: JSON.stringify({ email: normalizedEmail }),
+      });
+      setEmail(normalizedEmail);
+      setStep("otp");
+    } catch (error) {
+      setError(error.message || "Could not send OTP.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleOtpSubmit = (event) => {
+  const handleOtpSubmit = async (event) => {
     event.preventDefault();
     setError("");
-    if (otp.join("") !== MOCK_OTP) {
-      setError("Incorrect OTP. (Hint: 123456 for testing.)");
+    const code = otp.join("");
+
+    if (code.length !== 6) {
+      setError("Enter the 6-digit OTP sent to your email.");
       return;
     }
-    setStep("reset");
+
+    setIsSubmitting(true);
+
+    try {
+      await apiRequest("/users/verify-reset-otp", {
+        method: "POST",
+        body: JSON.stringify({ email, code }),
+      });
+      setStep("reset");
+    } catch (error) {
+      setError(error.message || "Could not verify OTP.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleResetSubmit = (event) => {
+  const handleResetSubmit = async (event) => {
     event.preventDefault();
     setError("");
     const data = new FormData(event.currentTarget);
     const newPass = String(data.get("newPassword") || "");
     const confirm = String(data.get("confirmPassword") || "");
+    const code = otp.join("");
 
     if (newPass.length < 6) {
       setError("Password must be at least 6 characters.");
@@ -70,7 +105,20 @@ export default function ForgotPasswordPopover({ open, onClose, defaultEmail = ""
       setError("Passwords don't match.");
       return;
     }
-    setStep("success");
+
+    setIsSubmitting(true);
+
+    try {
+      await apiRequest("/users/reset-password", {
+        method: "POST",
+        body: JSON.stringify({ email, code, newPassword: newPass }),
+      });
+      setStep("success");
+    } catch (error) {
+      setError(error.message || "Could not reset password.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -113,9 +161,10 @@ export default function ForgotPasswordPopover({ open, onClose, defaultEmail = ""
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-main px-4 py-2 text-xs font-semibold text-white transition-colors duration-300 hover:bg-mainHover"
+                  disabled={isSubmitting}
+                  className="rounded-xl bg-main px-4 py-2 text-xs font-semibold text-white transition-colors duration-300 hover:bg-mainHover disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Send OTP
+                  {isSubmitting ? "Sending..." : "Send OTP"}
                 </button>
               </div>
             </form>
@@ -150,9 +199,10 @@ export default function ForgotPasswordPopover({ open, onClose, defaultEmail = ""
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-main px-4 py-2 text-xs font-semibold text-white transition-colors duration-300 hover:bg-mainHover"
+                  disabled={isSubmitting}
+                  className="rounded-xl bg-main px-4 py-2 text-xs font-semibold text-white transition-colors duration-300 hover:bg-mainHover disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Verify
+                  {isSubmitting ? "Verifying..." : "Verify"}
                 </button>
               </div>
             </form>
@@ -195,9 +245,10 @@ export default function ForgotPasswordPopover({ open, onClose, defaultEmail = ""
                 </button>
                 <button
                   type="submit"
-                  className="rounded-xl bg-main px-4 py-2 text-xs font-semibold text-white transition-colors duration-300 hover:bg-mainHover"
+                  disabled={isSubmitting}
+                  className="rounded-xl bg-main px-4 py-2 text-xs font-semibold text-white transition-colors duration-300 hover:bg-mainHover disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Reset Password
+                  {isSubmitting ? "Resetting..." : "Reset Password"}
                 </button>
               </div>
             </form>
