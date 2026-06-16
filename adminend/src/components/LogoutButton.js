@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { HiOutlineArrowRightOnRectangle } from "react-icons/hi2";
 
 import { useToast } from "@/components/ui/toast";
 import { useAdminAuth } from "@/components/AuthGate";
@@ -52,7 +51,20 @@ export default function LogoutButton({ variant = "default" }) {
         {loading ? (
           <span className="text-xs font-bold">...</span>
         ) : (
-          <HiOutlineArrowRightOnRectangle className="text-lg" />
+          <svg
+            viewBox="0 0 24 24"
+            aria-hidden="true"
+            className="h-5 w-5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M10 17l5-5-5-5" />
+            <path d="M15 12H3" />
+            <path d="M21 3v18" />
+          </svg>
         )}
       </button>
     );
