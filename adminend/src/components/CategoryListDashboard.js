@@ -4,8 +4,38 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import DashboardShell, { Icon } from "@/components/DashboardShell";
+import { getApiBaseUrl } from "@/lib/apiBaseUrl";
 import { useToast } from "@/components/ui/toast";
-import { adminApi } from "@/lib/adminApi";
+
+const REQUEST_TIMEOUT_MS = 12000;
+
+const fetchWithTimeout = async (url, options = {}) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { credentials: "include", ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const getApiErrorMessage = (error, fallback) => {
+  if (error?.name === "AbortError") {
+    return "Backend request timeout. Please verify backend is running on port 3000.";
+  }
+  return error?.message || fallback;
+};
+
+const formatDate = (date) => {
+  if (!date) return "—";
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+};
 
 function StatusToggle({ on = true, onToggle }) {
   return (
@@ -38,98 +68,194 @@ function StatusToggle({ on = true, onToggle }) {
 
 export default function CategoryListDashboard() {
   const { showToast, confirm } = useToast();
+  const apiBaseUrl = getApiBaseUrl();
   const [animalRows, setAnimalRows] = useState([]);
   const [categoryRows, setCategoryRows] = useState([]);
-  const [search, setSearch] = useState("");
+  const [searchText, setSearchText] = useState("");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let alive = true;
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [animalsRes, categoriesRes] = await Promise.all([
+        fetchWithTimeout(`${apiBaseUrl}/animals/get-animals?includeInactive=true`, {
+          cache: "no-store",
+        }),
+        fetchWithTimeout(`${apiBaseUrl}/categories/get-categories?includeInactive=true`, {
+          cache: "no-store",
+        }),
+      ]);
 
-    Promise.all([
-      adminApi("/animals/get-animals?includeInactive=true"),
-      adminApi("/categories/get-categories"),
-    ])
-      .then(([animalData, categoryData]) => {
-        if (!alive) return;
-        setAnimalRows(animalData.animals || []);
-        setCategoryRows(categoryData.categories || []);
-      })
-      .catch((error) => {
-        showToast({
-          tone: "danger",
-          title: error.message || "Failed to load categories.",
-        });
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
+      const animalsJson = await animalsRes.json();
+      const categoriesJson = await categoriesRes.json();
+
+      if (!animalsRes.ok || !animalsJson.success) {
+        throw new Error(animalsJson.message || "Failed to load animals");
+      }
+      if (!categoriesRes.ok || !categoriesJson.success) {
+        throw new Error(categoriesJson.message || "Failed to load categories");
+      }
+
+      setAnimalRows(
+        (animalsJson.animals || []).map((item) => ({
+          id: item._id,
+          name: item.name,
+          slug: item.slug,
+          active: !!item.isActive,
+          updated: formatDate(item.updatedAt),
+        }))
+      );
+
+      setCategoryRows(
+        (categoriesJson.categories || []).map((item) => ({
+          id: item._id,
+          image: item.image
+            ? "IMG"
+            : (item.name || "")
+                .split(" ")
+                .map((part) => part[0])
+                .filter(Boolean)
+                .slice(0, 2)
+                .join("")
+                .toUpperCase() || "CT",
+          category: item.name,
+          animal: item.animalName,
+          slug: item.slug,
+          status: item.isActive ? "On" : "Off",
+          updated: formatDate(item.updatedAt),
+        }))
+      );
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: "Failed to load category data.",
+        description: getApiErrorMessage(error, "Please check backend server."),
       });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return () => {
-      alive = false;
-    };
-  }, [showToast]);
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const filteredAnimals = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return animalRows;
-    return animalRows.filter((item) =>
-      [item.name, item.slug].some((value) => value?.toLowerCase().includes(query))
+    const q = searchText.trim().toLowerCase();
+    if (!q) return animalRows;
+    return animalRows.filter(
+      (item) =>
+        item.name.toLowerCase().includes(q) || item.slug.toLowerCase().includes(q)
     );
-  }, [animalRows, search]);
+  }, [animalRows, searchText]);
 
   const filteredCategories = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return categoryRows;
-    return categoryRows.filter((item) =>
-      [item.name, item.slug, item.animalName]
-        .some((value) => value?.toLowerCase().includes(query))
+    const q = searchText.trim().toLowerCase();
+    if (!q) return categoryRows;
+    return categoryRows.filter(
+      (item) =>
+        item.category.toLowerCase().includes(q) ||
+        item.animal.toLowerCase().includes(q) ||
+        item.slug.toLowerCase().includes(q)
     );
-  }, [categoryRows, search]);
+  }, [categoryRows, searchText]);
 
-  const toggleAnimalStatus = async (animal) => {
+  const toggleAnimalStatus = async (id, nextValue) => {
     try {
-      await adminApi(`/animals/active-on-off-animals/${animal._id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ isActive: !animal.isActive }),
+      const response = await fetchWithTimeout(
+        `${apiBaseUrl}/animals/active-on-off-animals/${id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isActive: nextValue }),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Failed to toggle animal status");
+      }
+
+      setAnimalRows((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, active: nextValue } : item))
+      );
+      showToast({
+        tone: "success",
+        title: `Animal ${nextValue ? "activated" : "deactivated"}.`,
       });
-      const data = await adminApi("/animals/get-animals?includeInactive=true");
-      setAnimalRows(data.animals || []);
     } catch (error) {
-      showToast({ tone: "danger", title: error.message || "Failed to update animal." });
+      showToast({ tone: "danger", title: getApiErrorMessage(error, "Toggle failed.") });
     }
   };
 
-  const toggleCategoryStatus = async (category) => {
+  const toggleCategoryStatus = async (slug, nextValue) => {
     try {
-      await adminApi(`/categories/active-on-off-animals/${category.slug}`, {
-        method: "PATCH",
-        body: JSON.stringify({ isActive: !category.isActive }),
+      const response = await fetchWithTimeout(
+        `${apiBaseUrl}/categories/active-on-off-animals/${encodeURIComponent(slug)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isActive: nextValue }),
+        }
+      );
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Failed to toggle category status");
+      }
+
+      setCategoryRows((prev) =>
+        prev.map((item) =>
+          item.slug === slug ? { ...item, status: nextValue ? "On" : "Off" } : item
+        )
+      );
+      showToast({
+        tone: "success",
+        title: `Category ${nextValue ? "activated" : "deactivated"}.`,
       });
-      const data = await adminApi("/categories/get-categories");
-      setCategoryRows(data.categories || []);
     } catch (error) {
-      showToast({ tone: "danger", title: error.message || "Failed to update category." });
+      showToast({ tone: "danger", title: getApiErrorMessage(error, "Toggle failed.") });
     }
   };
 
-  const confirmDeleteAnimal = (animal) => {
+  const confirmDeleteAnimal = (id, name) => {
+    const hasCategories = categoryRows.some(
+      (item) =>
+        (item.animal || "").trim().toLowerCase() === name.trim().toLowerCase()
+    );
+
+    if (hasCategories) {
+      showToast({
+        tone: "danger",
+        title: "Cannot delete this animal.",
+        description: "Remove or reassign its categories first.",
+      });
+      return;
+    }
+
     confirm({
       title: "Delete this animal?",
-      description: "This will remove it from the backend list.",
+      description: "This will soft-delete the animal in backend.",
       confirmLabel: "Confirm",
       cancelLabel: "Cancel",
       tone: "danger",
       onConfirm: async () => {
         try {
-          await adminApi(`/animals/delete-animals/${animal._id}`, {
+          const response = await fetchWithTimeout(
+            `${apiBaseUrl}/animals/delete-animals/${id}`,
+            {
             method: "DELETE",
-          });
-          const data = await adminApi("/animals/get-animals?includeInactive=true");
-          setAnimalRows(data.animals || []);
-          showToast({ tone: "success", title: "Animal deleted." });
+            }
+          );
+          const data = await response.json();
+          if (!response.ok || !data.success) {
+            throw new Error(data.message || "Failed to delete animal");
+          }
+          setAnimalRows((prev) => prev.filter((item) => item.id !== id));
+          showToast({ tone: "success", title: `${name} deleted.` });
         } catch (error) {
-          showToast({ tone: "danger", title: error.message || "Failed to delete animal." });
+          showToast({
+            tone: "danger",
+            title: getApiErrorMessage(error, "Delete failed."),
+          });
         }
       },
     });
@@ -138,20 +264,28 @@ export default function CategoryListDashboard() {
   const confirmDeleteCategory = (category) => {
     confirm({
       title: "Delete this category?",
-      description: "This will remove it from the backend list.",
+      description:
+        "This will soft-delete the category in backend. Categories with products cannot be deleted.",
       confirmLabel: "Confirm",
       cancelLabel: "Cancel",
       tone: "danger",
       onConfirm: async () => {
         try {
-          await adminApi(`/categories/delete-category/${category.slug}`, {
-            method: "DELETE",
-          });
-          const data = await adminApi("/categories/get-categories");
-          setCategoryRows(data.categories || []);
+          const response = await fetchWithTimeout(
+            `${apiBaseUrl}/categories/delete-category/${encodeURIComponent(slug)}`,
+            { method: "DELETE" }
+          );
+          const data = await response.json();
+          if (!response.ok || !data.success) {
+            throw new Error(data.message || "Failed to delete category");
+          }
+          setCategoryRows((prev) => prev.filter((item) => item.slug !== slug));
           showToast({ tone: "success", title: "Category deleted." });
         } catch (error) {
-          showToast({ tone: "danger", title: error.message || "Failed to delete category." });
+          showToast({
+            tone: "danger",
+            title: getApiErrorMessage(error, "Delete failed."),
+          });
         }
       },
     });
@@ -194,14 +328,20 @@ export default function CategoryListDashboard() {
             </label>
             <input
               type="search"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
               placeholder="Search by category, animal, slug, or ID"
               className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
             />
           </div>
         </div>
       </div>
+
+      {loading ? (
+        <div className="mt-4 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-slate-500">
+          Loading animals and categories...
+        </div>
+      ) : null}
 
       <div className="mt-5 overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-lg shadow-main/5">
         <div className="border-b border-neutral-100 bg-mainSoft/40 px-5 py-3">
@@ -221,26 +361,43 @@ export default function CategoryListDashboard() {
             </thead>
             <tbody>
               {filteredAnimals.map((animal) => (
-                <tr key={animal._id} className="border-b border-neutral-100 last:border-b-0">
-                  <td className="px-8 py-5 text-sm font-black text-main">{animal.name}</td>
+                <tr
+                  key={animal.slug}
+                  className="border-b border-neutral-100 last:border-b-0"
+                >
+                  <td className="px-8 py-5 text-sm font-black text-main">
+                    {animal.name}
+                  </td>
                   <td className="px-8 py-5 text-sm font-semibold text-slate-500">
                     {animal.slug}
                   </td>
                   <td className="px-8 py-5 text-center">
                     <StatusToggle
-                      on={animal.isActive}
-                      onToggle={() => toggleAnimalStatus(animal)}
+                      on={animal.active}
+                      onToggle={() => toggleAnimalStatus(animal.id, !animal.active)}
                     />
                   </td>
                   <td className="px-8 py-5 text-center">
-                    <button
-                      type="button"
-                      onClick={() => confirmDeleteAnimal(animal)}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-100 bg-red-50 text-red-500 transition hover:bg-red-100"
-                      aria-label={`Delete ${animal.name}`}
-                    >
-                      <Icon name="trash" className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center justify-center gap-2">
+                      <Link
+                        href={{
+                          pathname: "/dashboard/categories/create-animal",
+                          query: { mode: "update", id: animal.id },
+                        }}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-main/20 bg-mainSoft text-main transition hover:bg-mainSoft/70"
+                        aria-label={`Edit ${animal.name}`}
+                      >
+                        <Icon name="edit" className="h-3.5 w-3.5" />
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => confirmDeleteAnimal(animal.id, animal.name)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-100 bg-red-50 text-red-500 transition hover:bg-red-100"
+                        aria-label={`Delete ${animal.name}`}
+                      >
+                        <Icon name="trash" className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -270,7 +427,10 @@ export default function CategoryListDashboard() {
             </thead>
             <tbody>
               {filteredCategories.map((item) => (
-                <tr key={item._id} className="border-b border-neutral-100 last:border-b-0">
+                <tr
+                  key={item.slug}
+                  className="border-b border-neutral-100 last:border-b-0"
+                >
                   <td className="px-8 py-5">
                     <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-mainSoft text-xs font-black text-main">
                       {(item.image || item.name || "C").slice(0, 2).toUpperCase()}
@@ -285,8 +445,8 @@ export default function CategoryListDashboard() {
                   </td>
                   <td className="px-8 py-5 text-center">
                     <StatusToggle
-                      on={item.isActive}
-                      onToggle={() => toggleCategoryStatus(item)}
+                      on={item.status === "On"}
+                      onToggle={() => toggleCategoryStatus(item.slug, item.status !== "On")}
                     />
                   </td>
                   <td className="px-8 py-5 text-sm font-semibold text-slate-500">
@@ -297,14 +457,26 @@ export default function CategoryListDashboard() {
                         : "—"}
                   </td>
                   <td className="px-8 py-5 text-center">
-                    <button
-                      type="button"
-                      onClick={() => confirmDeleteCategory(item)}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-100 bg-red-50 text-red-500 transition hover:bg-red-100"
-                      aria-label={`Delete ${item.name}`}
-                    >
-                      <Icon name="trash" className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="flex items-center justify-center gap-2">
+                      <Link
+                        href={{
+                          pathname: "/dashboard/categories/create",
+                          query: { mode: "update", slug: item.slug },
+                        }}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-main/20 bg-mainSoft text-main transition hover:bg-mainSoft/70"
+                        aria-label={`Edit ${item.category}`}
+                      >
+                        <Icon name="edit" className="h-3.5 w-3.5" />
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => confirmDeleteCategory(item.slug)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-red-100 bg-red-50 text-red-500 transition hover:bg-red-100"
+                        aria-label={`Delete ${item.category}`}
+                      >
+                        <Icon name="trash" className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

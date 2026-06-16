@@ -1,30 +1,29 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import DashboardShell, { Badge, Icon } from "@/components/DashboardShell";
 import { useToast } from "@/components/ui/toast";
-import { adminApi } from "@/lib/adminApi";
+import {
+  bannerTypeLabels,
+  bannerTypeOptions,
+  buildBannerFormData,
+  createBannerOnApi,
+  deleteBannerOnApi,
+  getBannerImageUrl,
+  getBannersFromApi,
+  toggleBannerActiveOnApi,
+  updateBannerOnApi,
+} from "@/lib/bannerApi";
 
 const initialForm = {
   name: "",
   bannerType: "hero-banner",
   slideNumber: "1",
+  linkUrl: "",
+  altText: "",
 };
-
-const bannerTypeLabels = {
-  "hero-banner": "Hero banners",
-  "promo-banner": "Promo banners",
-  "slider-banner": "Slider banners",
-};
-
-const normalizeBanner = (item) => ({
-  id: item._id,
-  name: item.name,
-  bannerType: item.bannerType,
-  slideNumber: item.slideNumber,
-  isActive: !!item.isActive,
-});
 
 function groupByType(items) {
   return items.reduce(
@@ -166,30 +165,45 @@ function BannerSection({ title, items, onToggle, onDelete, onEdit }) {
 export default function BannersPage() {
   const { showToast, confirm } = useToast();
   const [banners, setBanners] = useState([]);
-  const [form, setForm] = useState(initialForm);
-  const [showCreate, setShowCreate] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(initialForm);
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState("");
+  const [editingId, setEditingId] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
   const createRef = useRef(null);
 
-  useEffect(() => {
-    let alive = true;
-    adminApi("/banners/get-banners")
-      .then((data) => {
-        if (!alive) return;
-        setBanners((data.banners || []).map(normalizeBanner));
-      })
-      .catch((error) => {
-        showToast({ tone: "danger", title: error.message || "Failed to load banners." });
-      })
-      .finally(() => {
-        if (alive) setLoading(false);
+  const loadBanners = async () => {
+    setLoading(true);
+    try {
+      const rows = await getBannersFromApi();
+      setBanners(rows);
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: error.message || "Failed to load banners.",
       });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    return () => {
-      alive = false;
-    };
-  }, [showToast]);
+  useEffect(() => {
+    loadBanners();
+  }, []);
+
+  useEffect(() => {
+    if (!imageFile) {
+      setImagePreview("");
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(imageFile);
+    setImagePreview(objectUrl);
+
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [imageFile]);
 
   const grouped = useMemo(() => groupByType(banners), [banners]);
   const summary = useMemo(
@@ -199,6 +213,12 @@ export default function BannersPage() {
     }),
     [banners]
   );
+
+  const resetForm = () => {
+    setForm(initialForm);
+    setImageFile(null);
+    setEditingId("");
+  };
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -212,9 +232,22 @@ export default function BannersPage() {
 
   const scrollToCreate = () => {
     setShowCreate(true);
-    requestAnimationFrame(() => {
-      createRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    resetForm();
+  };
+
+  const startEdit = (banner) => {
+    setShowCreate(true);
+    setEditingId(banner._id);
+    setForm({
+      name: banner.name || "",
+      bannerType: banner.bannerType,
+      slideNumber: String(banner.slideNumber || 1),
+      linkUrl: banner.linkUrl || "",
+      altText: banner.altText || "",
     });
+    setImageFile(null);
+    setImagePreview(getBannerImageUrl(banner.imageUrl));
+    createRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const handleSubmit = async (event) => {
@@ -225,146 +258,137 @@ export default function BannersPage() {
       return;
     }
 
+    if (!editingId && !imageFile) {
+      showToast({ tone: "warning", title: "Banner image is required." });
+      return;
+    }
+
     setSaving(true);
     try {
-      await adminApi("/banners/post-banners", {
-        method: "POST",
-        body: JSON.stringify({
-          name: form.name.trim(),
-          bannerType: form.bannerType,
-          slideNumber: Number(form.slideNumber),
-        }),
+      const payload = buildBannerFormData({
+        name: form.name,
+        bannerType: form.bannerType,
+        slideNumber: Number(form.slideNumber) || 1,
+        linkUrl: form.linkUrl,
+        altText: form.altText,
+        imageFile,
       });
-      await refreshBanners();
-      setForm(initialForm);
-      showToast({ tone: "success", title: "Banner created." });
+
+      if (editingId) {
+        await updateBannerOnApi(editingId, payload);
+        showToast({ tone: "success", title: "Banner updated." });
+      } else {
+        await createBannerOnApi(payload);
+        showToast({ tone: "success", title: "Banner created." });
+      }
+
+      resetForm();
+      setShowCreate(false);
+      await loadBanners();
     } catch (error) {
-      showToast({ tone: "danger", title: error.message || "Failed to create banner." });
+      showToast({
+        tone: "danger",
+        title: error.message || "Could not save banner.",
+      });
     } finally {
       setSaving(false);
     }
   };
 
-  const toggleBanner = async (id) => {
+  const toggleBanner = async (banner) => {
     try {
-      const current = banners.find((banner) => banner.id === id);
-      if (!current) return;
-
-      await adminApi(`/banners/active-on-off-banners/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ isActive: !current.isActive }),
+      const updated = await toggleBannerActiveOnApi(banner._id, !banner.isActive);
+      setBanners((current) =>
+        current.map((row) => (row._id === updated._id ? updated : row))
+      );
+      showToast({
+        tone: "success",
+        title: updated.isActive ? "Banner activated." : "Banner hidden.",
       });
-      await refreshBanners();
     } catch (error) {
-      showToast({ tone: "danger", title: error.message || "Failed to update banner." });
+      showToast({
+        tone: "danger",
+        title: error.message || "Could not update banner status.",
+      });
     }
   };
 
-  const deleteBanner = (id, name) => {
+  const deleteBanner = (banner) => {
     confirm({
-      title: `Delete ${name}?`,
-      description: "This banner will be removed from the admin list.",
+      title: `Delete ${banner.name}?`,
+      description: "This banner and its image will be removed.",
       confirmLabel: "Delete",
       tone: "danger",
       onConfirm: async () => {
         try {
-          await adminApi(`/banners/delete-banners/${id}`, {
-            method: "DELETE",
-          });
-          await refreshBanners();
+          await deleteBannerOnApi(banner._id);
+          setBanners((current) => current.filter((row) => row._id !== banner._id));
+          if (editingId === banner._id) {
+            resetForm();
+          }
           showToast({ tone: "success", title: "Banner deleted." });
         } catch (error) {
-          showToast({ tone: "danger", title: error.message || "Failed to delete banner." });
+          showToast({
+            tone: "danger",
+            title: error.message || "Could not delete banner.",
+          });
         }
       },
     });
   };
 
-  const editBanner = (banner) => {
-    showToast({
-      tone: "info",
-      title: `${banner.name} is connected to the backend and ready for editing.`,
-    });
-  };
-
   return (
     <DashboardShell activeItem="Promo Banners">
-      <div className="rounded-[24px] border border-neutral-200 bg-white px-5 py-5 shadow-lg shadow-main/5 md:px-6">
-        <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">
-          Marketing
-        </p>
-        <h1 className="mt-2 text-2xl font-black tracking-tight text-main md:text-3xl">
-          Promo Banners
-        </h1>
-        <p className="mt-1.5 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
-          Review the three banner groups first, then jump to the create form
-          below.
-        </p>
-      </div>
-
-      <div className="mt-5 grid gap-3 md:grid-cols-2">
-        <Metric
-          title="Active banners"
-          value={summary.active}
-          note="Currently visible on the storefront."
-        />
-        <Metric
-          title="Total banners"
-          value={summary.total}
-          note="All saved banner slots in the backend."
-        />
-      </div>
-
-      <div className="mt-5 space-y-5">
-        <BannerSection
-          title={loading ? "Loading hero banners..." : bannerTypeLabels["hero-banner"]}
-          items={grouped["hero-banner"]}
-          onToggle={toggleBanner}
-          onEdit={editBanner}
-          onDelete={deleteBanner}
-        />
-        <BannerSection
-          title={bannerTypeLabels["promo-banner"]}
-          items={grouped["promo-banner"]}
-          onToggle={toggleBanner}
-          onEdit={editBanner}
-          onDelete={deleteBanner}
-        />
-        <BannerSection
-          title={bannerTypeLabels["slider-banner"]}
-          items={grouped["slider-banner"]}
-          onToggle={toggleBanner}
-          onEdit={editBanner}
-          onDelete={deleteBanner}
-        />
-
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={scrollToCreate}
-            className="inline-flex h-11 items-center gap-2 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover"
-          >
-            <Icon name="send" className="h-4 w-4" />
-            Create banner
-          </button>
+      <div
+        ref={createRef}
+        className="rounded-[24px] border border-neutral-200 bg-white px-5 py-5 shadow-lg shadow-main/5 md:px-6"
+      >
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">
+              Marketing
+            </p>
+            <h1 className="mt-2 text-2xl font-black tracking-tight text-main md:text-3xl">
+              Promo Banners
+            </h1>
+            <p className="mt-1.5 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
+              Upload banner images here. Active hero banners appear on the home carousel;
+              promo banners appear in the deals section.
+            </p>
+          </div>
+          {!showCreate ? (
+            <button
+              type="button"
+              onClick={scrollToCreate}
+              className="inline-flex h-11 shrink-0 items-center gap-2 self-start rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover"
+            >
+              <Icon name="send" className="h-4 w-4" />
+              Create banner
+            </button>
+          ) : null}
         </div>
 
         {showCreate ? (
-          <section
-            ref={createRef}
-            id="create-banner"
-            className="rounded-[24px] border border-neutral-200 bg-white p-5 shadow-lg shadow-main/5"
-          >
+          <section id="create-banner" className="mt-6 border-t border-neutral-100 pt-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">
-                  Create Banner
+                  {editingId ? "Edit Banner" : "Create Banner"}
                 </p>
                 <h2 className="mt-2 text-xl font-black text-main">
-                  New banner entry
+                  {editingId ? "Update banner entry" : "New banner entry"}
                 </h2>
               </div>
-              <Icon name="image" className="h-6 w-6 text-main/70" />
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCreate(false);
+                  resetForm();
+                }}
+                className="inline-flex h-9 items-center rounded-xl border border-neutral-200 px-3 text-xs font-black text-slate-500 transition hover:bg-mainSoft hover:text-main"
+              >
+                Close
+              </button>
             </div>
 
             <form onSubmit={handleSubmit} className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -381,11 +405,7 @@ export default function BannersPage() {
                 value={form.bannerType}
                 onChange={handleChange}
                 as="select"
-                options={[
-                  ["hero-banner", "Hero banner"],
-                  ["promo-banner", "Promo banner"],
-                  ["slider-banner", "Slider banner"],
-                ]}
+                options={bannerTypeOptions}
               />
               <Field
                 label="Slide order"
@@ -395,20 +415,111 @@ export default function BannersPage() {
                 type="number"
                 min="1"
               />
+              <Field
+                label="Link URL (optional)"
+                name="linkUrl"
+                value={form.linkUrl}
+                onChange={handleChange}
+                placeholder="/categories/dog"
+              />
+              <Field
+                label="Alt text (optional)"
+                name="altText"
+                value={form.altText}
+                onChange={handleChange}
+                placeholder="Summer pet essentials banner"
+                className="sm:col-span-2"
+              />
 
-              <div className="sm:col-span-2 flex justify-end">
+              <div className="sm:col-span-2">
+                <span className="text-xs font-black uppercase tracking-[0.22em] text-main/75">
+                  Banner image {editingId ? "(optional on update)" : ""}
+                </span>
+                <div className="mt-1.5 flex flex-wrap items-center gap-3">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) =>
+                      setImageFile(event.target.files?.[0] || null)
+                    }
+                    className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-mainSoft file:px-3 file:py-2 file:text-sm file:font-black file:text-main"
+                  />
+                  {imagePreview ? (
+                    <div className="relative h-24 w-40 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50">
+                      <Image
+                        src={imagePreview}
+                        alt="Banner preview"
+                        fill
+                        unoptimized
+                        className="object-cover"
+                      />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 sm:col-span-2">
+                {editingId ? (
+                  <button
+                    type="button"
+                    onClick={resetForm}
+                    className="inline-flex h-11 items-center rounded-xl border border-neutral-200 px-4 text-sm font-black text-main transition hover:bg-mainSoft"
+                  >
+                    Cancel edit
+                  </button>
+                ) : null}
                 <button
                   type="submit"
                   disabled={saving}
-                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover disabled:cursor-not-allowed disabled:opacity-70"
+                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover disabled:cursor-not-allowed disabled:bg-neutral-300"
                 >
                   <Icon name="check" className="h-4 w-4" />
-                  {saving ? "Saving..." : "Save banner"}
+                  {saving ? "Saving..." : editingId ? "Update banner" : "Save banner"}
                 </button>
               </div>
             </form>
           </section>
         ) : null}
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-2">
+        <Metric
+          title="Active banners"
+          value={summary.active}
+          note="Currently visible on the storefront."
+        />
+        <Metric
+          title="Total banners"
+          value={summary.total}
+          note="All saved banners in the system."
+        />
+      </div>
+
+      <div className="mt-5 space-y-5">
+        <BannerSection
+          title={bannerTypeLabels["hero-banner"]}
+          items={grouped["hero-banner"]}
+          loading={loading}
+          onToggle={toggleBanner}
+          onEdit={startEdit}
+          onDelete={deleteBanner}
+        />
+        <BannerSection
+          title={bannerTypeLabels["promo-banner"]}
+          items={grouped["promo-banner"]}
+          loading={loading}
+          onToggle={toggleBanner}
+          onEdit={startEdit}
+          onDelete={deleteBanner}
+        />
+        <BannerSection
+          title={bannerTypeLabels["slider-banner"]}
+          items={grouped["slider-banner"]}
+          loading={loading}
+          onToggle={toggleBanner}
+          onEdit={startEdit}
+          onDelete={deleteBanner}
+        />
       </div>
     </DashboardShell>
   );

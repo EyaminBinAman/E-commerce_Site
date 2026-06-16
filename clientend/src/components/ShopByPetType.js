@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import Container from "@/components/Container";
+import { getCategoryAnimalsView } from "@/lib/categoryApi";
 import {
   Carousel,
   CarouselContent,

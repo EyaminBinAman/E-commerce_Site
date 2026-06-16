@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   HiOutlineArrowRightOnRectangle,
@@ -27,8 +27,10 @@ import ChangePasswordPopover from "@/components/ChangePasswordPopover";
 import Container from "@/components/Container";
 import DeleteAccountPopover from "@/components/DeleteAccountPopover";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useWishlist } from "@/components/WishlistProvider";
 import { useAuth } from "@/context/AuthContext";
 import { API_BASE_URL, apiRequest } from "@/lib/api";
+import { getMyOrdersFromApi } from "@/lib/orderApi";
 import {
   formatBDT,
   getInitials,
@@ -40,19 +42,6 @@ const getImageUrl = (src) => {
   if (src.startsWith("http")) return src;
   return `${API_BASE_URL.replace("/api/v1", "")}${src}`;
 };
-
-const normalizeOrder = (order) => ({
-  id: order.orderNumber || order._id,
-  date: new Date(order.createdAt).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }),
-  status: order.orderStatus || "Pending",
-  itemsCount: order.items?.reduce((total, item) => total + item.quantity, 0) || 0,
-  total: order.grandTotal || 0,
-  products: order.items?.map((item) => item.productName) || [],
-});
 
 const sections = [
   { id: "overview", label: "Overview", icon: HiOutlineSquares2X2 },
@@ -67,15 +56,17 @@ const validTabs = new Set(sections.map((section) => section.id));
 
 export default function ProfilePage() {
   const { user, logout, loaded, refreshUser } = useAuth();
+  const { wishlistItems, isLoading: wishlistLoading, removeFromWishlist } =
+    useWishlist();
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const initialTab = searchParams.get("tab");
+  const initialOrderId = searchParams.get("order");
   const [active, setActive] = useState(
     initialTab && validTabs.has(initialTab) ? initialTab : "overview"
   );
   const [orders, setOrders] = useState([]);
-  const [wishlist, setWishlist] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
   const [pageMessage, setPageMessage] = useState("");
 
@@ -85,28 +76,45 @@ export default function ProfilePage() {
     }
   }, [loaded, user, router]);
 
-  const refreshProfileData = async () => {
+  const refreshProfileData = useCallback(async () => {
     if (!user) return;
 
     setDataLoading(true);
     try {
-      const [ordersData, wishlistData] = await Promise.all([
-        apiRequest("/orders/my-orders").catch(() => ({ orders: [] })),
-        apiRequest("/wishlist/get-wishlist").catch(() => ({
-          wishlist: { items: [] },
-        })),
-      ]);
-
-      setOrders((ordersData.orders || []).map(normalizeOrder));
-      setWishlist(wishlistData.wishlist?.items || []);
+      const nextOrders = await getMyOrdersFromApi();
+      setOrders(nextOrders);
+    } catch {
+      setOrders([]);
     } finally {
       setDataLoading(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     refreshProfileData();
-  }, [user?.id]);
+  }, [refreshProfileData]);
+
+  useEffect(() => {
+    if (active !== "orders" && active !== "overview") return;
+    refreshProfileData();
+  }, [active, refreshProfileData]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      if (active === "orders" || active === "overview") {
+        refreshProfileData();
+      }
+    };
+
+    window.addEventListener("focus", handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [active, refreshProfileData]);
 
   if (!loaded) return <ProfileInlineSkeleton />;
   if (!user) return null;
@@ -133,8 +141,8 @@ export default function ProfilePage() {
               <Overview
                 user={user}
                 orders={orders}
-                wishlist={wishlist}
-                isLoading={dataLoading}
+                wishlist={wishlistItems}
+                isLoading={dataLoading || wishlistLoading}
                 onNavigate={setActive}
               />
             )}
@@ -154,13 +162,18 @@ export default function ProfilePage() {
               />
             )}
             {active === "orders" && (
-              <Orders orders={orders} isLoading={dataLoading} />
+              <Orders
+                orders={orders}
+                isLoading={dataLoading}
+                onRefresh={refreshProfileData}
+                initialOrderId={initialOrderId}
+              />
             )}
             {active === "wishlist" && (
               <Wishlist
-                items={wishlist}
-                isLoading={dataLoading}
-                onRefresh={refreshProfileData}
+                items={wishlistItems}
+                isLoading={wishlistLoading}
+                onRemove={removeFromWishlist}
               />
             )}
             {active === "settings" && <Settings />}
@@ -467,13 +480,49 @@ function QuickAction({ icon: Icon, label, onClick }) {
 
 function PersonalInfo({ user, onUserUpdated, onMessage }) {
   const [error, setError] = useState("");
+  const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [draft, setDraft] = useState({
+    name: user.fullName || "",
+    phone: user.phone || "",
+  });
   const [pendingPhone, setPendingPhone] = useState("");
   const [phoneCode, setPhoneCode] = useState("");
 
+  useEffect(() => {
+    if (isEditing) return;
+    // Keep the locked view aligned with the saved profile.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDraft({
+      name: user.fullName || "",
+      phone: user.phone || "",
+    });
+  }, [isEditing, user.fullName, user.phone]);
+
+  const startEditing = () => {
+    setError("");
+    onMessage("");
+    setDraft({
+      name: user.fullName || "",
+      phone: user.phone || "",
+    });
+    setIsEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setError("");
+    setDraft({
+      name: user.fullName || "",
+      phone: user.phone || "",
+    });
+    setIsEditing(false);
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
+    if (!isEditing) return;
+
     setError("");
     setIsSaving(true);
 
@@ -483,11 +532,11 @@ function PersonalInfo({ user, onUserUpdated, onMessage }) {
       await apiRequest("/users/profile", {
         method: "PATCH",
         body: JSON.stringify({
-          name: String(data.get("name") || "").trim(),
+          name: String(data.get("name") || draft.name).trim(),
         }),
       });
 
-      const nextPhone = String(data.get("phone") || "").trim();
+      const nextPhone = String(data.get("phone") || draft.phone).trim();
       if (nextPhone && nextPhone !== (user.phone || "")) {
         await apiRequest("/users/request-update-otp", {
           method: "POST",
@@ -499,6 +548,7 @@ function PersonalInfo({ user, onUserUpdated, onMessage }) {
         await onUserUpdated();
         onMessage("Profile updated successfully");
       }
+      setIsEditing(false);
     } catch (error) {
       setError(error.message || "Could not update profile.");
     } finally {
@@ -531,6 +581,8 @@ function PersonalInfo({ user, onUserUpdated, onMessage }) {
   };
 
   const handleImageChange = async (event) => {
+    if (!isEditing) return;
+
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -565,14 +617,35 @@ function PersonalInfo({ user, onUserUpdated, onMessage }) {
         title="Personal Information"
         description="Manage how your name, contact, and identity appear on PawTail."
         action={
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="flex h-10 items-center gap-2 rounded-xl bg-main px-4 text-xs font-semibold text-white transition-colors duration-300 hover:bg-mainHover"
-          >
-            <HiOutlinePencil className="text-sm" />
-            {isSaving ? "Saving..." : "Save Changes"}
-          </button>
+          isEditing ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={cancelEditing}
+                disabled={isSaving || isUploading}
+                className="flex h-10 items-center rounded-xl border border-neutral-200 bg-white px-4 text-xs font-semibold text-neutral-700 transition-colors duration-300 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving || isUploading}
+                className="flex h-10 items-center gap-2 rounded-xl bg-main px-4 text-xs font-semibold text-white transition-colors duration-300 hover:bg-mainHover disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <HiOutlinePencil className="text-sm" />
+                {isSaving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={startEditing}
+              className="flex h-10 items-center gap-2 rounded-xl bg-main px-4 text-xs font-semibold text-white transition-colors duration-300 hover:bg-mainHover"
+            >
+              <HiOutlinePencil className="text-sm" />
+              Edit Profile
+            </button>
+          )
         }
       />
 
@@ -595,29 +668,47 @@ function PersonalInfo({ user, onUserUpdated, onMessage }) {
           <p className="mt-1 text-xs text-neutral-500">
             PNG or JPG, at least 200x200 pixels. Max 2MB.
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <label className="cursor-pointer rounded-xl border border-main bg-white px-4 py-2 text-xs font-semibold text-main transition-colors hover:bg-mainSoft">
-              {isUploading ? "Uploading..." : "Upload new"}
-              <input
-                type="file"
-                accept="image/*"
-                className="sr-only"
-                onChange={handleImageChange}
-                disabled={isUploading}
-              />
-            </label>
-          </div>
+          {isEditing ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <label className="cursor-pointer rounded-xl border border-main bg-white px-4 py-2 text-xs font-semibold text-main transition-colors hover:bg-mainSoft">
+                {isUploading ? "Uploading..." : "Upload new"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={handleImageChange}
+                  disabled={isUploading}
+                />
+              </label>
+            </div>
+          ) : (
+            <p className="mt-3 text-xs font-semibold text-neutral-500">
+              Click Edit Profile to change your photo.
+            </p>
+          )}
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="Full Name" name="name" defaultValue={user.fullName} />
-        <FormField label="Username" defaultValue={user.username} disabled />
-        <FormField label="Email" type="email" defaultValue={user.email} disabled />
-        <FormField label="Phone" name="phone" defaultValue={user.phone} />
+        <FormField
+          label="Full Name"
+          name="name"
+          value={draft.name}
+          onChange={(value) => setDraft((current) => ({ ...current, name: value }))}
+          disabled={!isEditing}
+        />
+        <FormField label="Username" value={user.username} disabled />
+        <FormField label="Email" type="email" value={user.email} disabled />
+        <FormField
+          label="Phone"
+          name="phone"
+          value={draft.phone}
+          onChange={(value) => setDraft((current) => ({ ...current, phone: value }))}
+          disabled={!isEditing}
+        />
         <FormField
           label="Joined"
-          defaultValue={new Date(user.joinedAt).toLocaleDateString("en-US", {
+          value={new Date(user.joinedAt).toLocaleDateString("en-US", {
             month: "short",
             day: "numeric",
             year: "numeric",
@@ -673,10 +764,21 @@ function FormField({
   label,
   name,
   type = "text",
+  value,
   defaultValue,
   disabled,
   onChange,
 }) {
+  const valueProps =
+    value === undefined
+      ? { defaultValue }
+      : {
+          value,
+          onChange: onChange
+            ? (event) => onChange(event.target.value)
+            : undefined,
+        };
+
   return (
     <div>
       <label className="block text-xs font-semibold text-neutral-800">
@@ -685,8 +787,7 @@ function FormField({
       <input
         type={type}
         name={name}
-        defaultValue={defaultValue}
-        onChange={onChange ? (event) => onChange(event.target.value) : undefined}
+        {...valueProps}
         disabled={disabled}
         className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-4 text-sm text-neutral-800 outline-none transition-colors duration-300 focus:border-main disabled:bg-neutral-50 disabled:text-neutral-500"
       />
@@ -956,8 +1057,32 @@ const orderFilters = [
   "Cancelled",
 ];
 
-function Orders({ orders, isLoading }) {
+function Orders({ orders, isLoading, onRefresh, initialOrderId = "" }) {
   const [filter, setFilter] = useState("All");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState(initialOrderId || "");
+
+  const selectedOrder = useMemo(
+    () =>
+      orders.find(
+        (order) => order.id === selectedOrderId || order.mongoId === selectedOrderId
+      ) || null,
+    [orders, selectedOrderId]
+  );
+
+  useEffect(() => {
+    if (!initialOrderId) return;
+    setSelectedOrderId(initialOrderId);
+  }, [initialOrderId]);
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await onRefresh();
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const filtered =
     filter === "All"
@@ -969,6 +1094,16 @@ function Orders({ orders, isLoading }) {
       <SectionHeading
         title="My Orders"
         description="Track everything from kibble to grooming kits."
+        action={
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={isLoading || isRefreshing}
+            className="h-10 rounded-xl border border-neutral-200 px-4 text-xs font-semibold text-main transition-colors duration-300 hover:border-main hover:bg-mainSoft disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isRefreshing ? "Refreshing..." : "Refresh"}
+          </button>
+        }
       />
 
       <div className="flex flex-wrap gap-2">
@@ -991,13 +1126,26 @@ function Orders({ orders, isLoading }) {
         })}
       </div>
 
+      {selectedOrder ? (
+        <OrderDetails
+          order={selectedOrder}
+          onClose={() => setSelectedOrderId("")}
+        />
+      ) : null}
+
       <div className="flex flex-col gap-3">
         {isLoading ? (
           <p className="rounded-2xl border border-dashed border-neutral-200 p-8 text-center text-sm text-neutral-500">
             Loading your orders...
           </p>
         ) : filtered.length ? (
-          filtered.map((order) => <OrderRow key={order.id} order={order} />)
+          filtered.map((order) => (
+            <OrderRow
+              key={order.id}
+              order={order}
+              onView={() => setSelectedOrderId(order.id)}
+            />
+          ))
         ) : (
           <p className="rounded-2xl border border-dashed border-neutral-200 p-8 text-center text-sm text-neutral-500">
             No orders in this status yet.
@@ -1008,7 +1156,7 @@ function Orders({ orders, isLoading }) {
   );
 }
 
-function OrderRow({ order, compact = false }) {
+function OrderRow({ order, compact = false, onView }) {
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 p-4 transition-all duration-300 hover:border-main sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-start gap-3">
@@ -1032,10 +1180,11 @@ function OrderRow({ order, compact = false }) {
       <div className="flex flex-wrap items-center gap-3">
         <span
           className={`rounded-full px-3 py-1 text-[11px] font-bold uppercase tracking-wider ${
-            statusStyles[order.status] || "bg-neutral-100 text-neutral-700"
+            statusStyles[order.displayStatus || order.status] ||
+            "bg-neutral-100 text-neutral-700"
           }`}
         >
-          {order.status}
+          {order.displayStatus || order.status}
         </span>
         <span className="text-xs font-medium text-neutral-500">
           {order.itemsCount} {order.itemsCount === 1 ? "item" : "items"}
@@ -1043,27 +1192,135 @@ function OrderRow({ order, compact = false }) {
         <span className="text-sm font-bold text-neutral-900">
           {formatBDT(order.total)}
         </span>
-        <button
-          type="button"
-          className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-main transition-colors hover:border-main hover:bg-mainSoft"
-        >
-          View
-        </button>
+        {onView ? (
+          <button
+            type="button"
+            onClick={onView}
+            className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs font-semibold text-main transition-colors hover:border-main hover:bg-mainSoft"
+          >
+            View
+          </button>
+        ) : null}
       </div>
     </div>
   );
 }
 
-function Wishlist({ items, isLoading, onRefresh }) {
+function OrderDetails({ order, onClose }) {
+  const address = order.shippingAddress;
+
+  return (
+    <section className="rounded-2xl border border-main/20 bg-mainSoft/30 p-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-wider text-main/70">
+            Order details
+          </p>
+          <h3 className="mt-1 text-xl font-black text-neutral-950">{order.id}</h3>
+          <p className="mt-1 text-sm font-semibold text-neutral-500">
+            {order.date} • {order.paymentMethod} • {order.paymentStatus}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="h-9 rounded-xl border border-neutral-200 bg-white px-3 text-xs font-black text-main transition-colors hover:border-main"
+        >
+          Close
+        </button>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_280px]">
+        <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+          <h4 className="text-sm font-black text-neutral-950">Items</h4>
+          <div className="mt-3 space-y-3">
+            {order.items.map((item, index) => (
+              <div
+                key={`${item.productName}-${index}`}
+                className="flex items-start justify-between gap-3 border-b border-neutral-100 pb-3 last:border-0 last:pb-0"
+              >
+                <div>
+                  <p className="text-sm font-black text-neutral-900">
+                    {item.productName}
+                  </p>
+                  {item.variantName ? (
+                    <p className="mt-0.5 text-xs text-neutral-500">
+                      {item.variantName}
+                    </p>
+                  ) : null}
+                  <p className="mt-0.5 text-xs text-neutral-500">
+                    Qty {item.quantity} x {formatBDT(item.finalUnitPrice)}
+                  </p>
+                </div>
+                <p className="text-sm font-black text-neutral-950">
+                  {formatBDT(item.itemSubtotal)}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+            <h4 className="text-sm font-black text-neutral-950">Summary</h4>
+            <div className="mt-3 space-y-2 text-sm">
+              <SummaryLine label="Subtotal" value={formatBDT(order.subtotal)} />
+              {order.promoDiscount > 0 ? (
+                <SummaryLine
+                  label={order.promoCode ? `Voucher (${order.promoCode})` : "Voucher"}
+                  value={`-${formatBDT(order.promoDiscount)}`}
+                  tone="discount"
+                />
+              ) : null}
+              <SummaryLine label="Delivery" value={formatBDT(order.deliveryCharge)} />
+              <SummaryLine label="Total" value={formatBDT(order.total)} strong />
+            </div>
+          </div>
+
+          {address ? (
+            <div className="rounded-2xl border border-neutral-200 bg-white p-4">
+              <h4 className="text-sm font-black text-neutral-950">Delivery address</h4>
+              <p className="mt-3 text-sm font-semibold text-neutral-700">
+                {address.name}
+              </p>
+              <p className="mt-1 text-sm text-neutral-500">{address.phone}</p>
+              <p className="mt-1 text-sm text-neutral-500">
+                {[address.address, address.area, address.city, address.postalCode]
+                  .filter(Boolean)
+                  .join(", ")}
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SummaryLine({ label, value, strong = false, tone = "default" }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className={strong ? "font-black text-neutral-950" : "text-neutral-600"}>
+        {label}
+      </span>
+      <span
+        className={`font-black ${
+          tone === "discount" ? "text-emerald-700" : "text-neutral-950"
+        }`}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function Wishlist({ items, isLoading, onRemove }) {
   const [removingId, setRemovingId] = useState("");
 
   const handleRemove = async (productId) => {
     setRemovingId(productId);
     try {
-      await apiRequest(`/wishlist/remove-wishlist-item/${productId}`, {
-        method: "DELETE",
-      });
-      await onRefresh();
+      await onRemove(productId);
     } finally {
       setRemovingId("");
     }

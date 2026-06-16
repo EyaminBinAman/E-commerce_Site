@@ -1,36 +1,45 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 import DashboardShell, { Badge, Icon } from "@/components/DashboardShell";
-import { activeOrders } from "@/data/adminOrders";
+import { useToast } from "@/components/ui/toast";
+import {
+  filterOrdersByMode,
+  getOrdersFromApi,
+  orderStatusOptions,
+  paymentStatusOptions,
+  updateOrderPaymentStatusOnApi,
+  updateOrderStatusOnApi,
+} from "@/lib/orderApi";
 
 const summaryCards = [
   {
     title: "All Orders",
-    value: "05",
-    description: "All paid-delivered and cancelled order records.",
+    value: "00",
+    description: "All delivered and cancelled order records.",
     accent: "from-main to-main/70",
     ring: "ring-main/15",
   },
   {
     title: "Completed Orders",
-    value: "04",
-    description: "Delivered orders whose payment is fully cleared.",
+    value: "00",
+    description: "Orders that reached delivered status.",
     accent: "from-emerald-400 to-teal-300",
     ring: "ring-emerald-100",
   },
   {
     title: "Cancelled Orders",
-    value: "01",
+    value: "00",
     description: "Orders cancelled before completion.",
     accent: "from-accent to-accentSoft",
     ring: "ring-accent/20",
   },
   {
     title: "Delivered Orders",
-    value: "04",
-    description: "All delivered orders whose payment is cleared.",
+    value: "00",
+    description: "Orders that reached delivered status.",
     accent: "from-mainHover to-main",
     ring: "ring-main/20",
   },
@@ -74,95 +83,6 @@ export const orderDashboardSummaryCards = [
   },
 ];
 
-const orders = [
-  {
-    id: "ORDER-000005",
-    customer: "Eyamin",
-    phone: "+8801300076779",
-    date: "5/2/2026",
-    payment: "Cash on delivery",
-    paymentStatus: "PAID",
-    subtotal: "Tk 2,400",
-    delivery: "Tk 80",
-    total: "Tk 2,480",
-    orderStatus: "Delivered",
-    billStatus: "Paid",
-    address: "Mirpur, Dhaka",
-    items: [
-      ["Chicken Flavour Cat Food", "2 pack", "Tk 1,000"],
-      ["Cat Litter 10L", "3 pack", "Tk 1,400"],
-    ],
-  },
-  {
-    id: "ORDER-000004",
-    customer: "Eyamin",
-    phone: "+8801300076779",
-    date: "5/2/2026",
-    payment: "Cash on delivery",
-    paymentStatus: "PENDING",
-    subtotal: "Tk 1,200",
-    delivery: "Tk 80",
-    total: "Tk 1,280",
-    orderStatus: "Cancelled",
-    billStatus: "Pending",
-    address: "Mirpur, Dhaka",
-    items: [["Rabbit Treat Pack", "4 pack", "Tk 1,200"]],
-  },
-  {
-    id: "ORDER-000003",
-    customer: "Eyamin",
-    phone: "+8801300076779",
-    date: "5/1/2026",
-    payment: "Cash on delivery",
-    paymentStatus: "PAID",
-    subtotal: "Tk 21,200",
-    delivery: "Tk 80",
-    total: "Tk 21,280",
-    orderStatus: "Delivered",
-    billStatus: "Paid",
-    address: "Mirpur, Dhaka",
-    items: [
-      ["1kg Beef Flavour for Puppy Dogs", "20 pack", "Tk 9,000"],
-      ["Chicken Flavour Cat Food", "18 pack", "Tk 9,000"],
-      ["Cat Litter 10L", "7 pack", "Tk 3,200"],
-    ],
-  },
-  {
-    id: "ORDER-000002",
-    customer: "Eyamin",
-    phone: "+8801300076779",
-    date: "5/1/2026",
-    payment: "Cash on delivery",
-    paymentStatus: "PAID",
-    subtotal: "Tk 2,268",
-    delivery: "Tk 80",
-    total: "Tk 2,348",
-    orderStatus: "Delivered",
-    billStatus: "Paid",
-    address: "Mirpur, Dhaka",
-    items: [["Bird Seed Mix", "9 pack", "Tk 2,268"]],
-  },
-  {
-    id: "ORDER-000001",
-    customer: "Eyamin",
-    phone: "+8801300076779",
-    date: "5/1/2026",
-    payment: "Cash on delivery",
-    paymentStatus: "PAID",
-    subtotal: "Tk 1,270",
-    delivery: "Tk 80",
-    total: "Tk 1,350",
-    orderStatus: "Delivered",
-    billStatus: "Paid",
-    address: "Mirpur, Dhaka",
-    items: [["Rabbit Mineral Snack", "5 pack", "Tk 1,270"]],
-  },
-];
-
-export const activeOrderRows = activeOrders;
-
-const orderStatusOptions = ["Pending", "Processing", "Shipping", "Delivered", "Cancelled"];
-
 function orderStatusTone(status) {
   const tones = {
     Pending: "yellow",
@@ -205,10 +125,32 @@ function getOrderDashboardCards(orderRows) {
   });
 }
 
+function getHistorySummaryCards(orderRows) {
+  const delivered = orderRows.filter((order) => order.orderStatus === "Delivered").length;
+  const cancelled = orderRows.filter((order) => order.orderStatus === "Cancelled").length;
+  const completed = delivered;
+
+  return summaryCards.map((card) => {
+    const values = {
+      "All Orders": orderRows.length,
+      "Completed Orders": completed,
+      "Cancelled Orders": cancelled,
+      "Delivered Orders": delivered,
+    };
+
+    return {
+      ...card,
+      value: formatCount(values[card.title] || 0),
+    };
+  });
+}
+
 function OrderDetailsModal({ order, onClose }) {
   if (!order) {
     return null;
   }
+
+  const modalItems = order.modalItems || [];
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-sm">
@@ -274,8 +216,8 @@ function OrderDetailsModal({ order, onClose }) {
                 </tr>
               </thead>
               <tbody>
-                {order.items.map(([name, quantity, total]) => (
-                  <tr key={name} className="border-t border-neutral-100">
+                {modalItems.map(([name, quantity, total, lineKey]) => (
+                  <tr key={lineKey} className="border-t border-neutral-100">
                     <td className="px-5 py-4 text-sm font-black text-slate-800">{name}</td>
                     <td className="px-5 py-4 text-sm font-bold text-slate-500">{quantity}</td>
                     <td className="px-5 py-4 text-right text-sm font-black text-slate-800">{total}</td>
@@ -290,6 +232,14 @@ function OrderDetailsModal({ order, onClose }) {
               <span>Subtotal</span>
               <span>{order.subtotal}</span>
             </div>
+            {order.discountAmount > 0 ? (
+              <div className="flex justify-between text-sm font-bold text-emerald-700">
+                <span>
+                  Discount{order.promoCode ? ` (${order.promoCode})` : ""}
+                </span>
+                <span>-{order.discount}</span>
+              </div>
+            ) : null}
             <div className="flex justify-between text-sm font-bold text-slate-500">
               <span>Delivery</span>
               <span>{order.delivery}</span>
@@ -308,27 +258,114 @@ function OrderDetailsModal({ order, onClose }) {
 export default function OrderHistoryDashboard({
   activeItem = "Order History",
   heading = "Order History",
-  cards = summaryCards,
-  rows = orders,
+  rowFilter = "all",
   editableStatus = false,
+  editablePayment = false,
   viewBasePath = "",
+  pageDescription = "Review paid and cancelled orders, then open any record for full details.",
 }) {
+  const { showToast } = useToast();
   const [selectedOrder, setSelectedOrder] = useState(null);
-  const [orderRows, setOrderRows] = useState(rows);
-  const displayCards = editableStatus ? getOrderDashboardCards(orderRows) : cards;
+  const [allOrderRows, setAllOrderRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchText, setSearchText] = useState("");
 
-  function updateOrderStatus(orderId, nextStatus) {
-    setOrderRows((currentRows) =>
-      currentRows.map((order) =>
-        order.id === orderId ? { ...order, orderStatus: nextStatus } : order
-      )
-    );
+  const orderRows = useMemo(
+    () => filterOrdersByMode(allOrderRows, rowFilter),
+    [allOrderRows, rowFilter]
+  );
 
-    setSelectedOrder((currentOrder) =>
-      currentOrder?.id === orderId
-        ? { ...currentOrder, orderStatus: nextStatus }
-        : currentOrder
+  const filteredRows = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
+    if (!query) return orderRows;
+
+    return orderRows.filter(
+      (order) =>
+        order.id.toLowerCase().includes(query) ||
+        order.customer.toLowerCase().includes(query) ||
+        order.payment.toLowerCase().includes(query) ||
+        order.orderStatus.toLowerCase().includes(query) ||
+        order.billStatus.toLowerCase().includes(query)
     );
+  }, [orderRows, searchText]);
+
+  const displayCards = editableStatus
+    ? getOrderDashboardCards(orderRows)
+    : getHistorySummaryCards(orderRows);
+
+  useEffect(() => {
+    const loadOrders = async () => {
+      setLoading(true);
+      try {
+        const rows = await getOrdersFromApi();
+        setAllOrderRows(rows);
+      } catch (error) {
+        showToast({
+          tone: "danger",
+          title: "Failed to load orders.",
+          description: error.message || "Please check backend server.",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadOrders();
+  }, []);
+
+  async function handleOrderStatusChange(order, nextStatus) {
+    try {
+      const updated = await updateOrderStatusOnApi(order.mongoId, nextStatus);
+      setAllOrderRows((currentRows) =>
+        currentRows.map((row) => (row.mongoId === order.mongoId ? updated : row))
+      );
+      setSelectedOrder((currentOrder) =>
+        currentOrder?.mongoId === order.mongoId ? updated : currentOrder
+      );
+      showToast({
+        tone: "success",
+        title: `Order ${order.id} updated to ${nextStatus}.`,
+      });
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: error.message || "Failed to update order status.",
+      });
+    }
+  }
+
+  async function handleOrderPaymentChange(order, nextPaymentStatus) {
+    try {
+      const updated = await updateOrderPaymentStatusOnApi(
+        order.mongoId,
+        nextPaymentStatus
+      );
+      setAllOrderRows((currentRows) =>
+        currentRows.map((row) => (row.mongoId === order.mongoId ? updated : row))
+      );
+      setSelectedOrder((currentOrder) =>
+        currentOrder?.mongoId === order.mongoId ? updated : currentOrder
+      );
+
+      if (nextPaymentStatus === "Paid") {
+        showToast({
+          tone: "success",
+          title: `Order ${order.id} marked as paid.`,
+          description: "It will stay in Orders until it is delivered or cancelled.",
+        });
+        return;
+      }
+
+      showToast({
+        tone: "success",
+        title: `Order ${order.id} marked as unpaid.`,
+      });
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: error.message || "Failed to update payment status.",
+      });
+    }
   }
 
   return (
@@ -337,12 +374,19 @@ export default function OrderHistoryDashboard({
         <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">Orders</p>
         <h1 className="mt-3 text-3xl font-black tracking-tight text-main md:text-4xl">{heading}</h1>
         <p className="mt-4 max-w-3xl text-sm font-semibold leading-6 text-slate-400 md:text-base">
-          Review paid-and-delivered orders and cancelled orders, then open any record for full details.
+          {pageDescription}
         </p>
 
         <label className="mt-7 flex h-14 items-center rounded-2xl border border-neutral-200 bg-white px-5 text-slate-400 shadow-inner shadow-main/5">
           <Icon name="search" className="h-5 w-5" />
-          <input type="search" aria-label="Search order history" placeholder="Search by order ID, customer, payment, or status..." className="ml-3 w-full bg-transparent text-sm font-bold text-slate-700 outline-none placeholder:text-slate-300" />
+          <input
+            type="search"
+            aria-label="Search order history"
+            placeholder="Search by order ID, customer, payment, or status..."
+            value={searchText}
+            onChange={(event) => setSearchText(event.target.value)}
+            className="ml-3 w-full bg-transparent text-sm font-bold text-slate-700 outline-none placeholder:text-slate-300"
+          />
         </label>
       </div>
 
@@ -356,6 +400,12 @@ export default function OrderHistoryDashboard({
           </article>
         ))}
       </div>
+
+      {loading ? (
+        <div className="mt-8 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-slate-500">
+          Loading orders...
+        </div>
+      ) : null}
 
       <div className="mt-8 overflow-hidden rounded-[28px] border border-neutral-200 bg-white shadow-lg shadow-main/5">
         <div className="overflow-x-auto">
@@ -371,8 +421,8 @@ export default function OrderHistoryDashboard({
               </tr>
             </thead>
             <tbody>
-              {orderRows.map((order) => (
-                <tr key={order.id} className="border-b border-slate-100 last:border-b-0">
+              {filteredRows.map((order) => (
+                <tr key={order.mongoId} className="border-b border-slate-100 last:border-b-0">
                   <td className="px-14 py-7 text-sm font-black text-slate-700">{order.id}</td>
                   <td className="px-8 py-7">
                     <p className="text-sm font-black text-slate-700">{order.customer}</p>
@@ -380,7 +430,25 @@ export default function OrderHistoryDashboard({
                   </td>
                   <td className="px-8 py-7 text-center">
                     <p className="text-sm font-semibold text-slate-500">{order.payment}</p>
-                    <p className="mt-1 text-xs font-black uppercase tracking-[0.25em] text-slate-400">{order.paymentStatus}</p>
+                    <p className="mt-1 text-xs font-black uppercase tracking-[0.25em] text-slate-400">
+                      {order.billStatus}
+                    </p>
+                    {editablePayment ? (
+                      <select
+                        aria-label={`Update payment for ${order.id}`}
+                        value={order.billStatus === "Paid" ? "Paid" : "Pending"}
+                        onChange={(event) =>
+                          handleOrderPaymentChange(order, event.target.value)
+                        }
+                        className="mt-2 h-9 rounded-xl border border-neutral-200 bg-white px-3 text-xs font-black text-main outline-none transition focus:border-main"
+                      >
+                        {paymentStatusOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
                   </td>
                   <td className="px-8 py-7 text-sm font-black text-slate-800">{order.total}</td>
                   <td className="px-8 py-7">
@@ -394,7 +462,7 @@ export default function OrderHistoryDashboard({
                           aria-label={`Update status for ${order.id}`}
                           value={order.orderStatus}
                           onChange={(event) =>
-                            updateOrderStatus(order.id, event.target.value)
+                            handleOrderStatusChange(order, event.target.value)
                           }
                           className="h-9 rounded-xl border border-neutral-200 bg-white px-3 text-xs font-black text-main outline-none transition focus:border-main"
                         >
@@ -409,12 +477,12 @@ export default function OrderHistoryDashboard({
                   </td>
                   <td className="px-10 py-7 text-center">
                     {viewBasePath ? (
-                      <a
-                        href={`${viewBasePath}/${order.id}`}
+                      <Link
+                        href={`${viewBasePath}/${order.mongoId}`}
                         className="inline-flex h-11 items-center rounded-2xl bg-main px-6 text-sm font-black text-white shadow-md shadow-main/20 transition hover:bg-mainHover"
                       >
                         View
-                      </a>
+                      </Link>
                     ) : (
                       <button
                         type="button"
@@ -427,6 +495,13 @@ export default function OrderHistoryDashboard({
                   </td>
                 </tr>
               ))}
+              {!loading && filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-8 py-10 text-center text-sm font-semibold text-slate-400">
+                    No orders found.
+                  </td>
+                </tr>
+              ) : null}
             </tbody>
           </table>
         </div>

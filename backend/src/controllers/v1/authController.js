@@ -1,12 +1,37 @@
 const bcrypt = require("bcryptjs");
+const fs = require("fs/promises");
 const jwt = require("jsonwebtoken");
+const mongoose = require("mongoose");
+const path = require("path");
 
 const createMailTransporter = require("../../config/mail");
+const Order = require("../../models/Order");
 const User = require("../../models/User");
 
 // Utility functions
 const generateVerificationCode = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+const removeUploadedUserImage = async (profilePic) => {
+  if (!profilePic || !profilePic.startsWith("/uploads/users/")) {
+    return;
+  }
+
+  const usersUploadDir = path.resolve(process.cwd(), "uploads", "users");
+  const imagePath = path.resolve(process.cwd(), profilePic.replace(/^\/+/, ""));
+
+  if (!imagePath.startsWith(`${usersUploadDir}${path.sep}`)) {
+    return;
+  }
+
+  try {
+    await fs.unlink(imagePath);
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw error;
+    }
+  }
 };
 
 // Token generation functions
@@ -664,8 +689,12 @@ const uploadProfileImage = async (req, res, next) => {
     }
 
     const user = req.user;
-    user.profilePic = `/uploads/users/${req.file.filename}`;
+    const previousProfilePic = user.profilePic;
+    const nextProfilePic = `/uploads/users/${req.file.filename}`;
+
+    user.profilePic = nextProfilePic;
     await user.save();
+    await removeUploadedUserImage(previousProfilePic);
 
     return res.status(200).json({
       success: true,
@@ -967,6 +996,55 @@ const logout = async (req, res, next) => {
   }
 };
 
+const refreshToken = async (req, res, next) => {
+  try {
+    const token = req.cookies?.refreshToken;
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "Refresh token required",
+      });
+    }
+
+    let decoded;
+
+    try {
+      decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+    } catch {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or expired refresh token",
+      });
+    }
+
+    const user = await User.findOne({ _id: decoded.id, refreshToken: token });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Refresh token is no longer valid",
+      });
+    }
+
+    const accessToken = createAccessToken(user._id);
+
+    res.cookie(
+      "accessToken",
+      accessToken,
+      cookieOptions(15 * 60 * 1000)
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Access token refreshed",
+      user: serializeUser(user),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getCurrentUser = async (req, res) => {
   const user = req.user;
 
@@ -974,6 +1052,81 @@ const getCurrentUser = async (req, res) => {
     success: true,
     user: serializeUser(user),
   });
+};
+
+const getAccounts = async (req, res, next) => {
+  try {
+    const accounts = await User.find()
+      .select("name email phone role isVerified profilePic address createdAt updatedAt")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      message: "Accounts fetched successfully",
+      accounts: accounts.map((account) => ({
+        id: account._id,
+        name: account.name,
+        email: account.email,
+        phone: account.phone,
+        role: account.role,
+        isVerified: account.isVerified,
+        profilePic: account.profilePic,
+        addressCount: Array.isArray(account.address) ? account.address.length : 0,
+        createdAt: account.createdAt,
+        updatedAt: account.updatedAt,
+      })),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getAccountDetails = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid account id is required",
+      });
+    }
+
+    const account = await User.findById(id)
+      .select("name email phone role isVerified profilePic address createdAt updatedAt")
+      .lean();
+
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        message: "Account not found",
+      });
+    }
+
+    const orders = await Order.find({ user: account._id }).sort({ createdAt: -1 }).lean();
+
+    return res.status(200).json({
+      success: true,
+      message: "Account details fetched successfully",
+      account: {
+        id: account._id,
+        name: account.name,
+        email: account.email,
+        phone: account.phone,
+        role: account.role,
+        isVerified: account.isVerified,
+        profilePic: account.profilePic,
+        address: account.address || [],
+        addressCount: Array.isArray(account.address) ? account.address.length : 0,
+        createdAt: account.createdAt,
+        updatedAt: account.updatedAt,
+      },
+      orders,
+    });
+  } catch (error) {
+    next(error);
+  }
 };
 
 
@@ -997,5 +1150,8 @@ module.exports = {
   setDefaultAddress,
   deleteAccount,
   logout,
+  refreshToken,
   getCurrentUser,
+  getAccounts,
+  getAccountDetails,
 };

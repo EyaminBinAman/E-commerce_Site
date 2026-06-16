@@ -1,73 +1,172 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
-import { apiRequest } from "@/lib/api";
+import { useAuth } from "@/context/AuthContext";
+import { getApiBaseUrl } from "@/lib/apiBaseUrl";
+import {
+  clearGuestWishlistItems,
+  normalizeWishlistProduct,
+  readGuestWishlistItems,
+  writeGuestWishlistItems,
+} from "@/lib/guestStorage";
 
 const WishlistContext = createContext(null);
 
-function normalizeWishlistItems(items = []) {
-  return items.map((item) => ({
-    _id: item._id,
-    name: item.name,
-    slug: item.slug,
-    image: item.image || item.images?.[0] || null,
-    price: item.price,
-    discountPrice: item.discountPrice,
-    brand: item.brand || item.brand?.name || null,
-  }));
+async function readResponse(response) {
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const error = new Error(data.message || "Something went wrong");
+    error.status = response.status;
+    throw error;
+  }
+
+  return data;
 }
 
 export function WishlistProvider({ children }) {
+  const { user, loaded } = useAuth();
   const [items, setItems] = useState([]);
-  const [isReady, setIsReady] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const isSyncingGuestWishlist = useRef(false);
 
-  const refreshWishlist = useCallback(async () => {
+  const loadGuestWishlist = useCallback(() => {
+    const guestItems = readGuestWishlistItems();
+    setItems(guestItems);
+    return guestItems;
+  }, []);
+
+  const persistGuestWishlist = useCallback((nextItems) => {
+    writeGuestWishlistItems(nextItems);
+    setItems(nextItems);
+    return nextItems;
+  }, []);
+
+  const fetchWishlist = useCallback(async () => {
+    setIsLoading(true);
+
     try {
-      const data = await apiRequest("/wishlist/get-wishlist");
-      const nextItems = normalizeWishlistItems(data.wishlist?.items || []);
+      const response = await fetch(`${getApiBaseUrl()}/wishlist/get-wishlist`, {
+        credentials: "include",
+      });
+      const data = await readResponse(response);
+      const nextItems = data.wishlist?.items || [];
       setItems(nextItems);
       return nextItems;
     } catch (error) {
       if (error.status === 401) {
-        setItems([]);
-        return [];
+        return loadGuestWishlist();
       }
+
       throw error;
     } finally {
-      setIsReady(true);
+      setIsLoading(false);
     }
-  }, []);
+  }, [loadGuestWishlist]);
 
-  useEffect(() => {
-    refreshWishlist().catch(() => undefined);
-  }, [refreshWishlist]);
+  const syncGuestWishlistToServer = useCallback(async () => {
+    const guestItems = readGuestWishlistItems();
+    if (!guestItems.length) {
+      return fetchWishlist();
+    }
+
+    for (const item of guestItems) {
+      await fetch(`${getApiBaseUrl()}/wishlist/add-to-wishlist`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ productId: item._id }),
+      }).then(readResponse);
+    }
+
+    clearGuestWishlistItems();
+    return fetchWishlist();
+  }, [fetchWishlist]);
+
+  const addToWishlist = useCallback(
+    async (product) => {
+      const normalizedProduct = normalizeWishlistProduct(product);
+
+      if (!user) {
+        const currentItems = readGuestWishlistItems();
+        if (currentItems.some((item) => item._id === normalizedProduct._id)) {
+          return currentItems;
+        }
+
+        return persistGuestWishlist([normalizedProduct, ...currentItems]);
+      }
+
+      const response = await fetch(`${getApiBaseUrl()}/wishlist/add-to-wishlist`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ productId: product._id }),
+      });
+      const data = await readResponse(response);
+      const nextItems = data.wishlist?.items || [];
+      setItems(nextItems);
+      return nextItems;
+    },
+    [persistGuestWishlist, user]
+  );
+
+  const removeFromWishlist = useCallback(
+    async (productId) => {
+      if (!user) {
+        const nextItems = readGuestWishlistItems().filter(
+          (item) => item._id !== productId
+        );
+        return persistGuestWishlist(nextItems);
+      }
+
+      const response = await fetch(
+        `${getApiBaseUrl()}/wishlist/remove-wishlist-item/${productId}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        }
+      );
+      const data = await readResponse(response);
+      const nextItems = data.wishlist?.items || [];
+      setItems(nextItems);
+      return nextItems;
+    },
+    [persistGuestWishlist, user]
+  );
+
+  const clearWishlist = useCallback(async () => {
+    if (!user) {
+      clearGuestWishlistItems();
+      return persistGuestWishlist([]);
+    }
+
+    const response = await fetch(`${getApiBaseUrl()}/wishlist/clear-wishlist`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    const data = await readResponse(response);
+    const nextItems = data.wishlist?.items || [];
+    setItems(nextItems);
+    return nextItems;
+  }, [persistGuestWishlist, user]);
 
   const isWishlisted = useCallback(
     (productId) => items.some((item) => item._id === productId),
     [items]
   );
-
-  const addToWishlist = useCallback(async (product) => {
-    const data = await apiRequest("/wishlist/add-to-wishlist", {
-      method: "POST",
-      body: JSON.stringify({ productId: product._id }),
-    });
-
-    const nextItems = normalizeWishlistItems(data.wishlist?.items || []);
-    setItems(nextItems);
-    return nextItems;
-  }, []);
-
-  const removeFromWishlist = useCallback(async (productId) => {
-    const data = await apiRequest(`/wishlist/remove-wishlist-item/${productId}`, {
-      method: "DELETE",
-    });
-
-    const nextItems = normalizeWishlistItems(data.wishlist?.items || []);
-    setItems(nextItems);
-    return nextItems;
-  }, []);
 
   const toggleWishlist = useCallback(
     async (product) => {
@@ -82,36 +181,51 @@ export function WishlistProvider({ children }) {
     [addToWishlist, isWishlisted, removeFromWishlist]
   );
 
-  const clearWishlist = useCallback(async () => {
-    const data = await apiRequest("/wishlist/clear-wishlist", {
-      method: "DELETE",
-    });
-    const nextItems = normalizeWishlistItems(data.wishlist?.items || []);
-    setItems(nextItems);
-    return nextItems;
-  }, []);
+  useEffect(() => {
+    if (!loaded) return;
+
+    if (!user) {
+      loadGuestWishlist();
+      return;
+    }
+
+    if (isSyncingGuestWishlist.current) {
+      return;
+    }
+
+    isSyncingGuestWishlist.current = true;
+    syncGuestWishlistToServer()
+      .catch(() => fetchWishlist().catch(() => undefined))
+      .finally(() => {
+        isSyncingGuestWishlist.current = false;
+      });
+  }, [fetchWishlist, loadGuestWishlist, loaded, syncGuestWishlistToServer, user?.id]);
 
   const value = useMemo(
     () => ({
       wishlistItems: items,
       wishlistCount: items.length,
-      isReady,
+      isLoading: loaded ? isLoading : true,
+      isReady: loaded && !isLoading,
+      isGuest: !user,
       isWishlisted,
       addToWishlist,
       removeFromWishlist,
       toggleWishlist,
       clearWishlist,
-      refreshWishlist,
+      fetchWishlist,
     }),
     [
       addToWishlist,
       clearWishlist,
-      isReady,
+      fetchWishlist,
+      isLoading,
       isWishlisted,
       items,
-      refreshWishlist,
+      loaded,
       removeFromWishlist,
       toggleWishlist,
+      user,
     ]
   );
 

@@ -1,10 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import DashboardShell, { Badge, Icon } from "@/components/DashboardShell";
 import { useToast } from "@/components/ui/toast";
 import { adminApi } from "@/lib/adminApi";
+
+const getDefaultDate = (daysFromNow = 0) => {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromNow);
+  return date.toISOString().slice(0, 10);
+};
 
 const initialForm = {
   name: "",
@@ -15,8 +21,8 @@ const initialForm = {
   scopeType: "all",
   totalUsageLimit: "",
   usageLimitPerUser: "1",
-  startDate: "",
-  expiryDate: "",
+  startDate: getDefaultDate(),
+  expiryDate: getDefaultDate(30),
 };
 
 const scopeLabels = {
@@ -88,8 +94,64 @@ function Field({
   );
 }
 
-function PromoTable({ title, items, onToggle, onDelete, onEdit }) {
-  if (!items.length) return null;
+function formatDate(value) {
+  if (!value) return "";
+  return new Date(value).toISOString().slice(0, 10);
+}
+
+function mapPromo(promoCode) {
+  return {
+    ...promoCode,
+    id: promoCode._id || promoCode.id,
+    scopeType: promoCode.scope?.type || "all",
+    startDate: formatDate(promoCode.startDate),
+    expiryDate: formatDate(promoCode.expiryDate),
+  };
+}
+
+function buildPayload(form) {
+  return {
+    name: form.name.trim().toUpperCase(),
+    discountType: form.discountType,
+    discountValue: toNumber(form.discountValue, 0),
+    minOrder: toNumber(form.minOrder, 0),
+    maxAmount: form.maxAmount === "" ? null : toNumber(form.maxAmount, null),
+    scope: { type: form.scopeType },
+    totalUsageLimit:
+      form.totalUsageLimit === "" ? null : toNumber(form.totalUsageLimit, null),
+    usageLimitPerUser: toNumber(form.usageLimitPerUser, 1),
+    startDate: form.startDate,
+    expiryDate: form.expiryDate,
+    isActive: true,
+  };
+}
+
+function getFormFromPromo(promo) {
+  return {
+    name: promo.name || "",
+    discountType: promo.discountType || "percentage",
+    discountValue: String(promo.discountValue ?? "10"),
+    minOrder: String(promo.minOrder ?? "0"),
+    maxAmount: promo.maxAmount === null || promo.maxAmount === undefined ? "" : String(promo.maxAmount),
+    scopeType: promo.scopeType || promo.scope?.type || "all",
+    totalUsageLimit:
+      promo.totalUsageLimit === null || promo.totalUsageLimit === undefined
+        ? ""
+        : String(promo.totalUsageLimit),
+    usageLimitPerUser: String(promo.usageLimitPerUser ?? "1"),
+    startDate: formatDate(promo.startDate),
+    expiryDate: formatDate(promo.expiryDate),
+  };
+}
+
+function PromoTable({ title, items, onToggle, onDelete, onEdit, busyId }) {
+  if (!items.length) {
+    return (
+      <section className="rounded-[24px] border border-dashed border-neutral-200 bg-white p-8 text-center text-sm font-bold text-slate-500">
+        No promo codes yet.
+      </section>
+    );
+  }
 
   return (
     <section className="overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-lg shadow-main/5">
@@ -132,7 +194,7 @@ function PromoTable({ title, items, onToggle, onDelete, onEdit }) {
                 </td>
                 <td className="px-4 py-4">
                   <p className="text-sm font-semibold text-slate-600">
-                    {scopeLabels[item.scopeType]}
+                    {scopeLabels[item.scopeType] || "All items"}
                   </p>
                   <p className="mt-1 text-[11px] font-semibold text-slate-400">
                     {item.usageLimitPerUser} use per customer
@@ -147,7 +209,12 @@ function PromoTable({ title, items, onToggle, onDelete, onEdit }) {
                   </p>
                 </td>
                 <td className="px-4 py-4 text-center">
-                  <button type="button" onClick={() => onToggle(item.id)} className="inline-flex">
+                  <button
+                    type="button"
+                    onClick={() => onToggle(item)}
+                    disabled={busyId === item.id}
+                    className="inline-flex disabled:cursor-not-allowed disabled:opacity-60"
+                  >
                     <Badge tone={item.isActive ? "green" : "gray"}>
                       {item.isActive ? "Active" : "Paused"}
                     </Badge>
@@ -165,8 +232,9 @@ function PromoTable({ title, items, onToggle, onDelete, onEdit }) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => onDelete(item.id, item.name)}
-                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-100 bg-red-50 px-3 text-xs font-black text-red-600 transition hover:bg-red-100"
+                      onClick={() => onDelete(item)}
+                      disabled={busyId === item.id}
+                      className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-100 bg-red-50 px-3 text-xs font-black text-red-600 transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       <Icon name="trash" className="h-3.5 w-3.5" />
                       Delete
@@ -187,8 +255,10 @@ export default function PromoCodesPage() {
   const [promoCodes, setPromoCodes] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [showCreate, setShowCreate] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [busyId, setBusyId] = useState(null);
   const createRef = useRef(null);
 
   useEffect(() => {
@@ -216,6 +286,27 @@ export default function PromoCodesPage() {
     return { active, total: promoCodes.length };
   }, [promoCodes]);
 
+  const loadPromoCodes = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const data = await adminApi("/promo-codes/get-promo-codes");
+      setPromoCodes((data.promoCodes || []).map(mapPromo));
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: "Could not load promo codes.",
+        description: error.message,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    loadPromoCodes();
+  }, [loadPromoCodes]);
+
   const handleChange = (event) => {
     const { name, value } = event.target;
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -223,14 +314,11 @@ export default function PromoCodesPage() {
 
   const scrollToCreate = () => {
     setShowCreate(true);
-    requestAnimationFrame(() => {
+    setEditingId(null);
+    setForm(initialForm);
+    setTimeout(() => {
       createRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  };
-
-  const refreshPromoCodes = async () => {
-    const data = await adminApi("/promo-codes/get-promo-codes");
-    setPromoCodes((data.promoCodes || []).map(normalizePromoCode));
+    }, 0);
   };
 
   const handleSubmit = async (event) => {
@@ -241,75 +329,103 @@ export default function PromoCodesPage() {
       return;
     }
 
-    setSaving(true);
+    setSubmitting(true);
+
     try {
-      await adminApi("/promo-codes/post-promo-codes", {
-        method: "POST",
-        body: JSON.stringify({
-          name: form.name.trim(),
-          discountType: form.discountType,
-          discountValue: Number(form.discountValue),
-          minOrder: Number(form.minOrder),
-          maxAmount: form.maxAmount === "" ? null : Number(form.maxAmount),
-          totalUsageLimit:
-            form.totalUsageLimit === "" ? null : Number(form.totalUsageLimit),
-          usageLimitPerUser: Number(form.usageLimitPerUser),
-          startDate: form.startDate,
-          expiryDate: form.expiryDate,
-          isActive: true,
-          scope: { type: form.scopeType },
-        }),
-      });
-      await refreshPromoCodes();
+      const payload = buildPayload(form);
+      const data = editingId
+        ? await adminApi(`/promo-codes/update-promo-codes/${editingId}`, {
+            method: "PATCH",
+            body: JSON.stringify(payload),
+          })
+        : await adminApi("/promo-codes/post-promo-codes", {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+
+      const nextPromo = mapPromo(data.promoCode);
+      setPromoCodes((prev) =>
+        editingId
+          ? prev.map((item) => (item.id === editingId ? nextPromo : item))
+          : [nextPromo, ...prev]
+      );
       setForm(initialForm);
-      showToast({ tone: "success", title: "Promo code created." });
-    } catch (error) {
-      showToast({ tone: "danger", title: error.message || "Failed to create promo code." });
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const togglePromo = async (id) => {
-    try {
-      const current = promoCodes.find((item) => item.id === id);
-      if (!current) return;
-
-      await adminApi(`/promo-codes/active-on-off-promo-codes/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ isActive: !current.isActive }),
+      setEditingId(null);
+      setShowCreate(false);
+      showToast({
+        tone: "success",
+        title: editingId ? "Promo code updated." : "Promo code created.",
       });
-      await refreshPromoCodes();
     } catch (error) {
-      showToast({ tone: "danger", title: error.message || "Failed to update promo code." });
+      showToast({
+        tone: "danger",
+        title: editingId ? "Could not update promo code." : "Could not create promo code.",
+        description: error.message,
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const deletePromo = (id, name) => {
+  const togglePromo = async (promo) => {
+    setBusyId(promo.id);
+
+    try {
+      const data = await adminApi(`/promo-codes/active-on-off-promo-codes/${promo.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive: !promo.isActive }),
+      });
+      const nextPromo = mapPromo(data.promoCode);
+      setPromoCodes((prev) =>
+        prev.map((item) => (item.id === promo.id ? nextPromo : item))
+      );
+      showToast({ tone: "success", title: "Promo status updated." });
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: "Could not update promo status.",
+        description: error.message,
+      });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const deletePromo = (promo) => {
     confirm({
-      title: `Delete ${name}?`,
-      description: "This removes the code from the admin list.",
+      title: `Delete ${promo.name}?`,
+      description: "This removes the code from the database.",
       confirmLabel: "Delete",
       tone: "danger",
       onConfirm: async () => {
+        setBusyId(promo.id);
+
         try {
-          await adminApi(`/promo-codes/delete-promo-codes/${id}`, {
+          await adminApi(`/promo-codes/delete-promo-codes/${promo.id}`, {
             method: "DELETE",
           });
-          await refreshPromoCodes();
+          setPromoCodes((prev) => prev.filter((item) => item.id !== promo.id));
           showToast({ tone: "success", title: "Promo code deleted." });
         } catch (error) {
-          showToast({ tone: "danger", title: error.message || "Failed to delete promo code." });
+          showToast({
+            tone: "danger",
+            title: "Could not delete promo code.",
+            description: error.message,
+          });
+        } finally {
+          setBusyId(null);
         }
       },
     });
   };
 
-  const editPromo = (item) => {
-    showToast({
-      tone: "info",
-      title: `${item.name} is connected to the backend and ready for editing.`,
-    });
+  const editPromo = (promo) => {
+    setForm(getFormFromPromo(promo));
+    setEditingId(promo.id);
+    setShowCreate(true);
+    setTimeout(() => {
+      createRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   };
 
   return (
@@ -322,8 +438,7 @@ export default function PromoCodesPage() {
           Promo Codes
         </h1>
         <p className="mt-1.5 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
-          Browse the promo list first, then jump to the create form below when
-          you need a new code.
+          Create, pause, edit, and delete promo codes connected to checkout.
         </p>
       </div>
 
@@ -341,14 +456,6 @@ export default function PromoCodesPage() {
       </div>
 
       <div className="mt-5 space-y-5">
-        <PromoTable
-          title={loading ? "Loading promo list..." : "Promo list"}
-          items={promoCodes}
-          onToggle={togglePromo}
-          onDelete={deletePromo}
-          onEdit={editPromo}
-        />
-
         <div className="flex justify-end">
           <button
             type="button"
@@ -369,10 +476,10 @@ export default function PromoCodesPage() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">
-                  Create Code
+                  {editingId ? "Edit Code" : "Create Code"}
                 </p>
                 <h2 className="mt-2 text-xl font-black text-main">
-                  New promo code
+                  {editingId ? "Update promo code" : "New promo code"}
                 </h2>
               </div>
               <Icon name="ticket" className="h-6 w-6 text-main/70" />
@@ -463,19 +570,45 @@ export default function PromoCodesPage() {
                 type="date"
               />
 
-              <div className="sm:col-span-2 flex justify-end">
+              <div className="sm:col-span-2 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreate(false);
+                    setEditingId(null);
+                    setForm(initialForm);
+                  }}
+                  className="inline-flex h-11 items-center rounded-xl border border-neutral-200 bg-white px-4 text-sm font-black text-slate-600 transition hover:bg-neutral-50"
+                >
+                  Cancel
+                </button>
                 <button
                   type="submit"
-                  disabled={saving}
-                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover disabled:cursor-not-allowed disabled:opacity-70"
+                  disabled={submitting}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Icon name="check" className="h-4 w-4" />
-                  {saving ? "Saving..." : "Save code"}
+                  {submitting ? "Saving..." : "Save code"}
                 </button>
               </div>
             </form>
           </section>
         ) : null}
+
+        {loading ? (
+          <section className="rounded-[24px] border border-neutral-200 bg-white p-8 text-center text-sm font-black text-main shadow-lg shadow-main/5">
+            Loading promo codes...
+          </section>
+        ) : (
+          <PromoTable
+            title="Promo list"
+            items={promoCodes}
+            onToggle={togglePromo}
+            onDelete={deletePromo}
+            onEdit={editPromo}
+            busyId={busyId}
+          />
+        )}
       </div>
     </DashboardShell>
   );

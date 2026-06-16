@@ -1,68 +1,101 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+
 import DashboardShell, { Badge } from "@/components/DashboardShell";
+import { useToast } from "@/components/ui/toast";
+import { adminApi } from "@/lib/adminApi";
 
-const customers = [
-  {
-    name: "Test User4",
-    phone: "01500000000",
-    joined: "4/19/2026",
-    phoneStatus: "Not verified",
-    isActive: true,
-  },
-  {
-    name: "Test User3",
-    phone: "01400000000",
-    joined: "4/19/2026",
-    phoneStatus: "Not verified",
-    isActive: true,
-  },
-  {
-    name: "Test User",
-    phone: "01200000000",
-    joined: "4/19/2026",
-    phoneStatus: "Not verified",
-    isActive: true,
-  },
-];
+function formatDate(value) {
+  if (!value) return "—";
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
-const summaryCards = [
-  {
-    title: "Total Users",
-    value: String(customers.length).padStart(2, "0"),
-    description: "All customer accounts currently in the system.",
-    accent: "from-accent to-accentSoft",
-    ring: "ring-accent/20",
-  },
-  {
-    title: "Active Users",
-    value: String(customers.filter((item) => item.isActive).length).padStart(2, "0"),
-    description: "Customer accounts that are currently active.",
-    accent: "from-main to-main/70",
-    ring: "ring-main/15",
-  },
-  {
-    title: "Verified Users",
-    value: String(customers.filter((item) => item.phoneStatus === "Verified").length).padStart(2, "0"),
-    description: "Customers whose phone numbers are verified.",
-    accent: "from-mainHover to-main",
-    ring: "ring-main/20",
-  },
-];
+function mapAccount(account) {
+  return {
+    id: account.id || account._id,
+    name: account.name || "Unnamed account",
+    email: account.email || "—",
+    phone: account.phone || "—",
+    role: account.role || "user",
+    joined: formatDate(account.createdAt),
+    isVerified: Boolean(account.isVerified),
+    addressCount: account.addressCount || 0,
+  };
+}
 
 export default function CustomerManagementDashboard() {
+  const { showToast } = useToast();
+  const [accounts, setAccounts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadAccounts = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const data = await adminApi("/users/accounts");
+      setAccounts((data.accounts || []).map(mapAccount));
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: "Could not load accounts.",
+        description: error.message,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    loadAccounts();
+  }, [loadAccounts]);
+
+  const summaryCards = useMemo(
+    () => [
+      {
+        title: "Total Users",
+        value: String(accounts.length).padStart(2, "0"),
+        description: "All client and admin accounts in the system.",
+        accent: "from-accent to-accentSoft",
+        ring: "ring-accent/20",
+      },
+      {
+        title: "Admin Users",
+        value: String(accounts.filter((item) => item.role === "admin").length).padStart(2, "0"),
+        description: "Accounts with admin dashboard access.",
+        accent: "from-mainHover to-main",
+        ring: "ring-main/20",
+      },
+      {
+        title: "Verified Users",
+        value: String(accounts.filter((item) => item.isVerified).length).padStart(2, "0"),
+        description: "Customers who completed email verification.",
+        accent: "from-main to-main/70",
+        ring: "ring-main/15",
+      },
+    ],
+    [accounts]
+  );
+
   return (
     <DashboardShell activeItem="Customer Management">
       <div className="rounded-[24px] border border-neutral-200 bg-white px-5 py-4 shadow-lg shadow-main/5 md:px-6">
         <div>
-            <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">
-              Customers
-            </p>
-            <h1 className="mt-2 text-2xl font-black tracking-tight text-main md:text-3xl">
-              Customer Management
-            </h1>
-            <p className="mt-1.5 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
-              Review all signup customers, their phone numbers, join dates, and
-              verification status from one place.
-            </p>
+          <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">
+            Customers
+          </p>
+          <h1 className="mt-2 text-2xl font-black tracking-tight text-main md:text-3xl">
+            Customer Management
+          </h1>
+          <p className="mt-1.5 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
+            Review client and admin accounts, contact details, join dates, roles,
+            and verification status from one place.
+          </p>
         </div>
       </div>
 
@@ -86,41 +119,75 @@ export default function CustomerManagementDashboard() {
 
       <div className="mt-5 overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-lg shadow-main/5">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[840px] border-collapse text-left">
+          <table className="w-full min-w-[960px] border-collapse text-left">
             <thead className="bg-mainSoft/50">
               <tr className="border-b border-neutral-100 text-xs font-black uppercase tracking-[0.3em] text-slate-400">
-                <th className="px-12 py-5">Customer Name</th>
-                <th className="px-8 py-5">Phone Number</th>
+                <th className="px-8 py-5">Customer</th>
+                <th className="px-8 py-5">Role</th>
+                <th className="px-8 py-5">Phone</th>
                 <th className="px-8 py-5">Joined</th>
-                <th className="px-8 py-5 text-center">Phone Status</th>
+                <th className="px-8 py-5 text-center">Addresses</th>
+                <th className="px-8 py-5 text-center">Status</th>
               </tr>
             </thead>
             <tbody>
-              {customers.map((customer) => (
-                <tr
-                  key={`${customer.name}-${customer.phone}`}
-                  className="border-b border-neutral-100 last:border-b-0"
-                >
-                  <td className="px-12 py-6 text-sm font-black text-main">
-                    {customer.name}
-                  </td>
-                  <td className="px-8 py-6 text-sm font-semibold text-slate-600">
-                    {customer.phone}
-                  </td>
-                  <td className="px-8 py-6 text-sm font-semibold text-slate-500">
-                    {customer.joined}
-                  </td>
-                  <td className="px-8 py-6 text-center">
-                    <Badge
-                      tone={
-                        customer.phoneStatus === "Verified" ? "green" : "yellow"
-                      }
-                    >
-                      {customer.phoneStatus}
-                    </Badge>
+              {loading ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-8 py-10 text-center text-sm font-black text-main"
+                  >
+                    Loading customers...
                   </td>
                 </tr>
-              ))}
+              ) : accounts.length ? (
+                accounts.map((account) => (
+                  <tr
+                    key={account.id}
+                    className="border-b border-neutral-100 last:border-b-0"
+                  >
+                    <td className="px-8 py-6">
+                      <Link
+                        href={`/dashboard/customer-management/${account.id}`}
+                        className="text-sm font-black text-main hover:underline"
+                      >
+                        {account.name}
+                      </Link>
+                      <p className="mt-1 text-xs font-semibold text-slate-400">
+                        {account.email}
+                      </p>
+                    </td>
+                    <td className="px-8 py-6">
+                      <Badge tone={account.role === "admin" ? "blue" : "gray"}>
+                        {account.role === "admin" ? "Admin" : "Client"}
+                      </Badge>
+                    </td>
+                    <td className="px-8 py-6 text-sm font-semibold text-slate-600">
+                      {account.phone}
+                    </td>
+                    <td className="px-8 py-6 text-sm font-semibold text-slate-500">
+                      {account.joined}
+                    </td>
+                    <td className="px-8 py-6 text-center text-sm font-black text-slate-700">
+                      {account.addressCount}
+                    </td>
+                    <td className="px-8 py-6 text-center">
+                      <Badge tone={account.isVerified ? "green" : "yellow"}>
+                        {account.isVerified ? "Verified" : "Not verified"}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-8 py-10 text-center text-sm font-bold text-slate-500"
+                  >
+                    No accounts found.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

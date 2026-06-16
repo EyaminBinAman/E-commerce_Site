@@ -16,13 +16,14 @@ import { useCart } from "@/components/CartProvider";
 import Container from "@/components/Container";
 import ForgotPasswordPopover from "@/components/ForgotPasswordPopover";
 import LoginPopover from "@/components/LoginPopover";
+import { useWishlist } from "@/components/WishlistProvider";
 import { useAuth } from "@/context/AuthContext";
 import { API_BASE_URL } from "@/lib/api";
 import { getInitials } from "@/lib/profileMock";
 
 const secondaryActions = [
-  { id: "wishlist", label: "Wishlist", count: null, icon: HiOutlineHeart, href: "/profile?tab=wishlist" },
-  { id: "cart", label: "Cart", count: 0, icon: HiOutlineShoppingCart, href: "/cart" },
+  { id: "wishlist", label: "Wishlist", icon: HiOutlineHeart, href: "/wishlist" },
+  { id: "cart", label: "Cart", icon: HiOutlineShoppingCart, href: "/cart" },
 ];
 
 const getImageUrl = (src) => {
@@ -34,6 +35,7 @@ const getImageUrl = (src) => {
 export default function MiddleBar() {
   const { user, logout } = useAuth();
   const { cartCount } = useCart();
+  const { wishlistCount } = useWishlist();
   const router = useRouter();
   const pathname = usePathname();
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -148,7 +150,10 @@ export default function MiddleBar() {
                   </button>
                 )}
 
-                {secondaryActions.map(({ id, label, count, icon: Icon, href }) => (
+                {secondaryActions.map(({ id, label, icon: Icon, href }) => {
+                  const count = id === "cart" ? cartCount : wishlistCount;
+
+                  return (
                   <Link
                     key={id}
                     href={href}
@@ -156,13 +161,14 @@ export default function MiddleBar() {
                   >
                     <Icon className="text-lg" />
                     <span>{label}</span>
-                    {typeof count === "number" ? (
+                    {count > 0 ? (
                       <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-main px-1 text-xs text-white">
-                        {id === "cart" ? cartCount : count}
+                        {count}
                       </span>
                     ) : null}
                   </Link>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>

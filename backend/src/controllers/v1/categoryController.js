@@ -1,12 +1,14 @@
 const Category = require("../../models/Category");
+const Product = require("../../models/Product");
+const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // GET /get-categories
 const getCategories = async (req, res, next) => {
   try {
-    // Public + user => only active
-    // Admin => all categories
-
-    const filter = req.user?.role === "admin" ? {} : { isActive: true };
+    const includeInactive = ["1", "true", "yes"].includes(
+      String(req.query.includeInactive || "").toLowerCase()
+    );
+    const filter = includeInactive ? {} : { isActive: true };
 
     const categories = await Category.find(filter).sort({
       createdAt: -1,
@@ -37,7 +39,7 @@ const createCategory = async (req, res, next) => {
     // Prevent duplicate category names
     const existingCategory = await Category.findOne({
       name: {
-        $regex: `^${name.trim()}$`,
+        $regex: `^${escapeRegex(name.trim())}$`,
         $options: "i",
       },
       isDeleted: { $ne: true },
@@ -84,7 +86,7 @@ const updateCategoryBySlug = async (req, res, next) => {
     if (name) {
       const existingCategory = await Category.findOne({
         name: {
-          $regex: `^${name.trim()}$`,
+          $regex: `^${escapeRegex(name.trim())}$`,
           $options: "i",
         },
         _id: { $ne: category._id },
@@ -132,6 +134,18 @@ const deleteCategoryBySlug = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: "Category not found",
+      });
+    }
+
+    const linkedProductCount = await Product.countDocuments({
+      category: category._id,
+      isDeleted: false,
+    });
+
+    if (linkedProductCount > 0) {
+      return res.status(409).json({
+        success: false,
+        message: "Cannot delete category while products are assigned to it",
       });
     }
 

@@ -4,11 +4,14 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { useToast } from "@/components/ui/toast";
+import { useAdminAuth } from "@/components/AuthGate";
 import { logoutAdmin } from "@/lib/adminApi";
+import { clearAdminSession } from "@/lib/adminSession";
 
 export default function LogoutButton() {
   const router = useRouter();
   const { showToast } = useToast();
+  const { setAdmin } = useAdminAuth();
   const [loading, setLoading] = useState(false);
 
   async function handleLogout() {
@@ -21,8 +24,9 @@ export default function LogoutButton() {
         description: "Admin session ended.",
         tone: "success",
       });
+      clearAdminSession();
+      setAdmin(null);
       router.replace("/login");
-      router.refresh();
     } catch (error) {
       showToast({
         title: "Logout failed",

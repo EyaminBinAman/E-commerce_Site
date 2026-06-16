@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const Animal = require("../../models/Animal");
+const Category = require("../../models/Category");
 
 const createSlug = (name) => {
   return name
@@ -59,11 +60,10 @@ const isInvalidAnimalId = (id, res) => {
 
 const getAnimals = async (req, res, next) => {
   try {
-    const includeInactive = req.query.includeInactive === "true";
-    const filter = includeInactive
-      ? { isDeleted: { $ne: true } }
-      : { isActive: true, isDeleted: { $ne: true } };
-
+    const includeInactive = ["1", "true", "yes"].includes(
+      String(req.query.includeInactive || "").toLowerCase()
+    );
+    const filter = includeInactive ? {} : { isActive: true };
     const animals = await Animal.find(filter).sort({ createdAt: -1 });
 
     return res.status(200).json({
@@ -207,6 +207,20 @@ const deleteAnimal = async (req, res, next) => {
       return res.status(404).json({
         success: false,
         message: "Animal not found",
+      });
+    }
+
+    const linkedCategoryCount = await Category.countDocuments({
+      animalName: {
+        $regex: `^${escapeRegex(animal.name.trim())}$`,
+        $options: "i",
+      },
+    });
+
+    if (linkedCategoryCount > 0) {
+      return res.status(409).json({
+        success: false,
+        message: "Cannot delete animal while categories are assigned to it",
       });
     }
 

@@ -175,12 +175,11 @@ export default function ProductDetails({ product, relatedProducts }) {
         productId: product._id,
         variantId: selectedVariant?._id || null,
         quantity,
+        product,
       });
       setCartMessage("Added to cart");
     } catch (error) {
-      setCartMessage(
-        error.status === 401 ? "Login required" : error.message || "Could not add to cart"
-      );
+      setCartMessage(error.message || "Could not add to cart");
     } finally {
       setIsAddingToCart(false);
     }

@@ -1,113 +1,309 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+
 import DashboardShell, { Badge } from "@/components/DashboardShell";
+import { useToast } from "@/components/ui/toast";
+import { adminApi } from "@/lib/adminApi";
 
-const reportCards = [
-  {
-    title: "Revenue",
-    value: "BDT 680.00",
-    helper: "-97.5% vs previous month",
-    accent: "from-cyan-400 to-sky-300",
-    marker: "bg-cyan-400",
-  },
-  {
-    title: "Sales Profit",
-    value: "BDT 180.00",
-    helper: "-99.3% from paid orders only",
-    accent: "from-emerald-400 to-teal-300",
-    marker: "bg-emerald-400",
-  },
-  {
-    title: "Gross Profit",
-    value: "BDT 180.00",
-    helper: "Based on product buy price matched to sold items",
-    accent: "from-violet-500 to-fuchsia-300",
-    marker: "bg-violet-400",
-  },
-  {
-    title: "Net Profit",
-    value: "BDT 680.00",
-    helper: "-97.5% after supplier invoice spend",
-    accent: "from-amber-400 to-orange-300",
-    marker: "bg-amber-400",
-  },
-  {
-    title: "Orders Closed",
-    value: "1",
-    helper: "0 supplier invoices in the same month",
-    accent: "from-cyan-400 to-sky-300",
-    marker: "bg-cyan-400",
-  },
-  {
-    title: "Growth Rate",
-    value: "-97.5%",
-    helper: "Previous month revenue was Tk 27,458",
-    accent: "from-violet-500 to-fuchsia-300",
-    marker: "bg-violet-400",
-  },
-  {
-    title: "Procurement Spend",
-    value: "BDT 0.00",
-    helper: "Supplier invoice subtotal inside the selected period.",
-    accent: "from-amber-400 to-orange-300",
-    marker: "bg-amber-400",
-  },
-  {
-    title: "Supplier Invoices",
-    value: "0",
-    helper: "Recorded procurement documents within the active range.",
-    accent: "from-emerald-400 to-teal-300",
-    marker: "bg-emerald-400",
-  },
+const cardStyles = [
+  ["from-cyan-400 to-sky-300", "bg-cyan-400"],
+  ["from-emerald-400 to-teal-300", "bg-emerald-400"],
+  ["from-violet-500 to-fuchsia-300", "bg-violet-400"],
+  ["from-amber-400 to-orange-300", "bg-amber-400"],
+  ["from-cyan-400 to-sky-300", "bg-cyan-400"],
+  ["from-violet-500 to-fuchsia-300", "bg-violet-400"],
+  ["from-rose-500 via-orange-400 to-accent", "bg-accent"],
+  ["from-emerald-400 to-teal-300", "bg-emerald-400"],
 ];
 
-const flowPoints = [
-  ["Jun 1", "BDT 0", 16, 8],
-  ["Jun 3", "BDT 0", 24, 12],
-  ["Jun 5", "BDT 0", 18, 10],
-  ["Jun 7", "BDT 0", 30, 18],
-  ["Jun 9", "BDT 680", 82, 44],
-  ["Jun 11", "BDT 0", 28, 14],
-  ["Jun 13", "BDT 0", 20, 10],
-];
+const mixColors = ["bg-main", "bg-cyan-400", "bg-accent", "bg-violet-400", "bg-emerald-400"];
+const paymentMethodLabels = {
+  COD: "Cash on delivery",
+  BKASH: "bKash",
+  NAGAD: "Nagad",
+  CARD: "Card",
+  SSL_COMMERZ: "SSLCommerz",
+};
 
-const categoryMix = [
-  { label: "Dog Food", value: "62%", color: "bg-main", amount: "BDT 421.60" },
-  { label: "Cat Food", value: "22%", color: "bg-cyan-400", amount: "BDT 149.60" },
-  { label: "Rabbit Food", value: "10%", color: "bg-accent", amount: "BDT 68.00" },
-  { label: "Others", value: "6%", color: "bg-violet-400", amount: "BDT 40.80" },
-];
+function money(value = 0) {
+  return `BDT ${Number(value || 0).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
 
-const productMix = [
-  {
-    label: "Puppy Beef Food",
-    value: "55%",
-    color: "bg-main",
-    amount: "BDT 374.00",
-  },
-  {
-    label: "Chicken Cat Food",
-    value: "25%",
-    color: "bg-emerald-400",
-    amount: "BDT 170.00",
-  },
-  { label: "Cat Litter", value: "12%", color: "bg-cyan-400", amount: "BDT 81.60" },
-  { label: "Rabbit Treat", value: "8%", color: "bg-accent", amount: "BDT 54.40" },
-];
+function shortMoney(value = 0) {
+  return `BDT ${Number(value || 0).toLocaleString("en-US", {
+    maximumFractionDigits: 0,
+  })}`;
+}
 
-const topProducts = [
-  ["1kg Beef Flavour for Puppy Dogs", "Dog Food", "1", "BDT 680.00", "BDT 180.00"],
-  ["Chicken Flavour Cat Food", "Cat Food", "0", "BDT 0.00", "BDT 0.00"],
-  ["Cat Litter 10L", "Cat Litter", "0", "BDT 0.00", "BDT 0.00"],
-  ["Rabbit Treat Pack", "Rabbit Food", "0", "BDT 0.00", "BDT 0.00"],
-];
+function dateInput(value) {
+  return new Date(value).toISOString().slice(0, 10);
+}
 
-const recentSales = [
-  ["ORDER-000006", "Eyamin", "6/9/2026", "Cash on delivery", "Pending", "Processing", "BDT 680.00"],
-  ["ORDER-000005", "Eyamin", "5/2/2026", "Cash on delivery", "Paid", "Delivered", "BDT 2,480.00"],
-  ["ORDER-000004", "Eyamin", "5/2/2026", "Cash on delivery", "Pending", "Cancelled", "BDT 1,280.00"],
-  ["ORDER-000003", "Eyamin", "5/1/2026", "Cash on delivery", "Paid", "Delivered", "BDT 21,280.00"],
-];
+function displayDate(value) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "-";
+  return parsed.toLocaleDateString("en-US", {
+    month: "numeric",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
-function ReportHeader() {
+function rangeLabel(date, type) {
+  const parsed = new Date(`${date}T00:00:00`);
+  if (type === "Daily") return parsed.toLocaleDateString("en-US", { dateStyle: "long" });
+  if (type === "Weekly") {
+    const start = new Date(parsed);
+    start.setDate(parsed.getDate() - parsed.getDay());
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    return `${displayDate(start)} to ${displayDate(end)}`;
+  }
+  if (type === "Yearly") return String(parsed.getFullYear());
+  return parsed.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+}
+
+function isInRange(value, anchorDate, reportType) {
+  const date = new Date(value);
+  const anchor = new Date(`${anchorDate}T00:00:00`);
+  if (Number.isNaN(date.getTime()) || Number.isNaN(anchor.getTime())) return false;
+
+  if (reportType === "Daily") {
+    return date.toDateString() === anchor.toDateString();
+  }
+
+  if (reportType === "Weekly") {
+    const start = new Date(anchor);
+    start.setDate(anchor.getDate() - anchor.getDay());
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 7);
+    return date >= start && date < end;
+  }
+
+  if (reportType === "Yearly") {
+    return date.getFullYear() === anchor.getFullYear();
+  }
+
+  return (
+    date.getFullYear() === anchor.getFullYear() &&
+    date.getMonth() === anchor.getMonth()
+  );
+}
+
+function getCategoryName(category, categoriesById) {
+  const id = category?._id || category;
+  return categoriesById.get(String(id)) || "Uncategorized";
+}
+
+function buildMix(entries, total) {
+  const rows = [...entries]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5);
+
+  if (!rows.length) {
+    return [{ label: "No sales", value: "0%", color: "bg-slate-300", amount: money(0) }];
+  }
+
+  return rows.map(([label, amount], index) => ({
+    label,
+    value: `${Math.round((amount / Math.max(total, 1)) * 100)}%`,
+    color: mixColors[index % mixColors.length],
+    amount: money(amount),
+  }));
+}
+
+function chartGradient(data) {
+  if (!data.length || data[0].label === "No sales") return "#e2e8f0";
+
+  const palette = ["#173f31", "#22c1e8", "#f28c38", "#a78bfa", "#34d399"];
+  let cursor = 0;
+  const stops = data.map((item, index) => {
+    const size = Number(item.value.replace("%", "")) || 0;
+    const start = cursor;
+    cursor += size * 3.6;
+    return `${palette[index % palette.length]} ${start}deg ${cursor}deg`;
+  });
+
+  return `conic-gradient(${stops.join(", ")})`;
+}
+
+function buildFlowPoints(orders, reportType) {
+  const buckets = new Map();
+
+  orders.forEach((order) => {
+    const date = new Date(order.createdAt);
+    const key =
+      reportType === "Yearly"
+        ? date.toLocaleDateString("en-US", { month: "short" })
+        : date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    buckets.set(key, (buckets.get(key) || 0) + Number(order.grandTotal || 0));
+  });
+
+  const rows = [...buckets.entries()].slice(-7);
+  const max = Math.max(...rows.map(([, total]) => total), 1);
+
+  if (!rows.length) {
+    return [["No sales", "BDT 0", 8, 8]];
+  }
+
+  return rows.map(([label, total]) => {
+    const height = Math.max(10, Math.round((total / max) * 88));
+    return [label, shortMoney(total), height, Math.max(8, height - 18)];
+  });
+}
+
+function useSalesData(reportType, anchorDate) {
+  const { showToast } = useToast();
+  const [orders, setOrders] = useState([]);
+  const [categoriesById, setCategoriesById] = useState(new Map());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadData() {
+      setLoading(true);
+      try {
+        const [ordersData, categoriesData] = await Promise.all([
+          adminApi("/orders/get-orders", { cache: "no-store" }),
+          adminApi("/categories/get-categories?includeInactive=true", { cache: "no-store" }),
+        ]);
+
+        if (!active) return;
+
+        setOrders(ordersData.data?.orders || []);
+        setCategoriesById(
+          new Map(
+            (categoriesData.categories || []).map((category) => [
+              String(category._id),
+              category.name,
+            ])
+          )
+        );
+      } catch (error) {
+        if (!active) return;
+        showToast({
+          tone: "danger",
+          title: "Failed to load sales report.",
+          description: error.message,
+        });
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    loadData();
+
+    return () => {
+      active = false;
+    };
+  }, [showToast]);
+
+  return useMemo(() => {
+    const rangeOrders = orders.filter((order) =>
+      isInRange(order.createdAt, anchorDate, reportType)
+    );
+    const paidOrders = rangeOrders.filter((order) => order.paymentStatus === "Paid");
+    const unpaidOrders = rangeOrders.filter((order) => order.paymentStatus !== "Paid");
+    const cancelledOrders = rangeOrders.filter((order) => order.orderStatus === "Cancelled");
+    const revenueOrders = paidOrders.filter((order) => order.orderStatus !== "Cancelled");
+    const totalRevenue = revenueOrders.reduce(
+      (sum, order) => sum + Number(order.grandTotal || 0),
+      0
+    );
+    const dueRevenue = unpaidOrders.reduce(
+      (sum, order) => sum + Number(order.grandTotal || 0),
+      0
+    );
+    const discounts = rangeOrders.reduce(
+      (sum, order) => sum + Number(order.promoDiscount || 0),
+      0
+    );
+    const deliveryRevenue = rangeOrders.reduce(
+      (sum, order) => sum + Number(order.deliveryCharge || 0),
+      0
+    );
+
+    const categoryTotals = new Map();
+    const productTotals = new Map();
+    const productRows = new Map();
+
+    revenueOrders.forEach((order) => {
+      (order.items || []).forEach((item) => {
+        const amount = Number(item.itemSubtotal || 0);
+        const name = item.productName || "Unknown product";
+        const category = getCategoryName(item.category, categoriesById);
+
+        categoryTotals.set(category, (categoryTotals.get(category) || 0) + amount);
+        productTotals.set(name, (productTotals.get(name) || 0) + amount);
+
+        const current = productRows.get(name) || {
+          product: name,
+          category,
+          sold: 0,
+          revenue: 0,
+        };
+        current.sold += Number(item.quantity || 0);
+        current.revenue += amount;
+        productRows.set(name, current);
+      });
+    });
+
+    const topProducts = [...productRows.values()]
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 8)
+      .map((row) => [
+        row.product,
+        row.category,
+        String(row.sold),
+        money(row.revenue),
+        money(row.revenue),
+      ]);
+
+    const recentSales = rangeOrders.slice(0, 10).map((order) => [
+      order.orderNumber,
+      order.userInfo?.name || "Unknown",
+      displayDate(order.createdAt),
+      paymentMethodLabels[order.paymentMethod] || order.paymentMethod || "-",
+      order.paymentStatus || "Pending",
+      order.orderStatus || "Pending",
+      money(order.grandTotal),
+    ]);
+
+    return {
+      loading,
+      cards: [
+        ["Revenue", money(totalRevenue), `${paidOrders.length} paid orders in range`],
+        ["Sales Profit", money(totalRevenue), "Net collected revenue; cost data is not stored"],
+        ["Gross Profit", money(totalRevenue), "Cost-of-goods data is not available"],
+        ["Net Profit", money(totalRevenue - 0), "After recorded procurement spend"],
+        ["Orders Closed", String(revenueOrders.length), `${cancelledOrders.length} cancelled orders`],
+        ["Discounts", money(discounts), "Promo discounts applied in this range"],
+        ["Procurement Spend", money(0), "Supplier invoice data is not stored"],
+        ["Due Revenue", money(dueRevenue), `${unpaidOrders.length} unpaid orders`],
+      ].map(([title, value, helper], index) => ({
+        title,
+        value,
+        helper,
+        accent: cardStyles[index][0],
+        marker: cardStyles[index][1],
+      })),
+      flowPoints: buildFlowPoints(revenueOrders, reportType),
+      categoryMix: buildMix(categoryTotals, totalRevenue),
+      productMix: buildMix(productTotals, totalRevenue),
+      topProducts,
+      recentSales,
+      centerLabel: shortMoney(totalRevenue),
+    };
+  }, [anchorDate, categoriesById, loading, orders, reportType]);
+}
+
+function ReportHeader({ reportType, anchorDate, onReportTypeChange, onAnchorDateChange }) {
   return (
     <div className="rounded-[28px] border border-neutral-200 bg-white px-6 py-7 shadow-lg shadow-main/5 md:px-8">
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_520px] xl:items-end">
@@ -119,11 +315,11 @@ function ReportHeader() {
             Sales Reports
           </h1>
           <p className="mt-4 max-w-4xl text-sm font-semibold leading-7 text-slate-400 md:text-base">
-            Review daily, weekly, monthly, and yearly revenue, profit,
-            procurement spend, and top-selling products from live backend data.
+            Review daily, weekly, monthly, and yearly revenue, discounts,
+            payment status, and top-selling products from backend orders.
           </p>
           <p className="mt-5 text-sm font-black text-slate-600">
-            Active range: June 2026
+            Active range: {rangeLabel(anchorDate, reportType)}
           </p>
         </div>
 
@@ -131,7 +327,8 @@ function ReportHeader() {
           <label>
             <span className="text-sm font-black text-slate-600">Report Type</span>
             <select
-              defaultValue="Monthly"
+              value={reportType}
+              onChange={(event) => onReportTypeChange(event.target.value)}
               className="mt-2 h-12 w-full rounded-xl border border-cyan-200 bg-white px-4 text-sm font-black text-slate-700 outline-none shadow-sm focus:border-cyan-400"
             >
               <option>Daily</option>
@@ -144,12 +341,14 @@ function ReportHeader() {
             <span className="text-sm font-black text-slate-600">Anchor Date</span>
             <input
               type="date"
-              defaultValue="2026-06-09"
+              value={anchorDate}
+              onChange={(event) => onAnchorDateChange(event.target.value)}
               className="mt-2 h-12 w-full rounded-xl border border-neutral-200 bg-white px-4 text-sm font-black text-slate-700 outline-none shadow-sm focus:border-main"
             />
           </label>
           <button
             type="button"
+            onClick={() => window.print()}
             className="mt-7 h-12 rounded-xl bg-[#268ccd] px-6 text-sm font-black text-white shadow-md shadow-sky-700/20 transition hover:bg-[#1f78af]"
           >
             Export Report
@@ -160,9 +359,9 @@ function ReportHeader() {
   );
 }
 
-function MetricCards() {
-  const primaryCards = reportCards.slice(0, 5);
-  const secondaryCards = reportCards.slice(5);
+function MetricCards({ cards }) {
+  const primaryCards = cards.slice(0, 5);
+  const secondaryCards = cards.slice(5);
 
   return (
     <div className="mt-6 space-y-5">
@@ -185,7 +384,7 @@ function MetricCard({ card }) {
     <article className="relative flex min-h-44 flex-col overflow-hidden rounded-[24px] border border-neutral-200 bg-white p-5 shadow-lg shadow-main/5">
       <div className={`absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r ${card.accent}`} />
       <p className="text-sm font-black text-slate-500">{card.title}</p>
-      <p className="mt-4 whitespace-nowrap text-[clamp(1.45rem,1.65vw,2rem)] font-black leading-tight tracking-tight text-slate-950">
+      <p className="mt-4 whitespace-nowrap text-[clamp(1.35rem,1.55vw,2rem)] font-black leading-tight tracking-tight text-slate-950">
         {card.value}
       </p>
       <p className="mt-auto pr-14 pt-7 text-sm font-bold leading-6 text-slate-400">
@@ -198,7 +397,7 @@ function MetricCard({ card }) {
   );
 }
 
-function FlowChart() {
+function FlowChart({ flowPoints }) {
   return (
     <section className="mt-6 rounded-[24px] border border-neutral-200 bg-white p-6 shadow-lg shadow-main/5">
       <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
@@ -207,17 +406,17 @@ function FlowChart() {
             Revenue Trends
           </p>
           <h2 className="mt-3 text-2xl font-black text-slate-950">
-            Sales and profit flow
+            Sales flow
           </h2>
         </div>
         <div className="flex gap-5 text-sm font-black text-slate-500">
           <span className="inline-flex items-center gap-2">
             <span className="h-3 w-3 rounded-full bg-cyan-400" />
-            Sales
+            Revenue
           </span>
           <span className="inline-flex items-center gap-2">
             <span className="h-3 w-3 rounded-full bg-emerald-400" />
-            Profit
+            Net
           </span>
         </div>
       </div>
@@ -286,13 +485,13 @@ function PieChartPanel({ title, subtitle, data, gradient, centerLabel }) {
   );
 }
 
-function TopProductsTable() {
+function TopProductsTable({ rows }) {
   return (
     <section className="overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-lg shadow-main/5">
       <div className="border-b border-neutral-100 px-6 py-5">
         <p className="text-lg font-black text-slate-950">Top Selling Products</p>
         <p className="mt-1 text-sm font-bold text-slate-400">
-          Revenue and profit contribution by item
+          Revenue contribution by item
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -303,19 +502,27 @@ function TopProductsTable() {
               <th className="px-5 py-5">Category</th>
               <th className="px-5 py-5 text-center">Sold</th>
               <th className="px-5 py-5">Revenue</th>
-              <th className="px-5 py-5">Profit</th>
+              <th className="px-5 py-5">Net</th>
             </tr>
           </thead>
           <tbody>
-            {topProducts.map(([product, category, sold, revenue, profit]) => (
-              <tr key={product} className="border-b border-neutral-100 last:border-b-0">
-                <td className="px-6 py-5 text-sm font-black text-slate-800">{product}</td>
-                <td className="px-5 py-5 text-sm font-bold text-slate-500">{category}</td>
-                <td className="px-5 py-5 text-center text-sm font-black text-main">{sold}</td>
-                <td className="px-5 py-5 text-sm font-black text-slate-800">{revenue}</td>
-                <td className="px-5 py-5 text-sm font-black text-emerald-600">{profit}</td>
+            {rows.length ? (
+              rows.map(([product, category, sold, revenue, profit]) => (
+                <tr key={product} className="border-b border-neutral-100 last:border-b-0">
+                  <td className="px-6 py-5 text-sm font-black text-slate-800">{product}</td>
+                  <td className="px-5 py-5 text-sm font-bold text-slate-500">{category}</td>
+                  <td className="px-5 py-5 text-center text-sm font-black text-main">{sold}</td>
+                  <td className="px-5 py-5 text-sm font-black text-slate-800">{revenue}</td>
+                  <td className="px-5 py-5 text-sm font-black text-emerald-600">{profit}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={5} className="px-6 py-10 text-center text-sm font-bold text-slate-400">
+                  No paid product sales in this range.
+                </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
@@ -323,13 +530,13 @@ function TopProductsTable() {
   );
 }
 
-function RecentSalesTable() {
+function RecentSalesTable({ rows }) {
   return (
     <section className="overflow-hidden rounded-[24px] border border-neutral-200 bg-white shadow-lg shadow-main/5">
       <div className="border-b border-neutral-100 px-6 py-5">
-        <p className="text-lg font-black text-slate-950">Closed Sales</p>
+        <p className="text-lg font-black text-slate-950">Orders in Range</p>
         <p className="mt-1 text-sm font-bold text-slate-400">
-          Orders included in this report period
+          Backend orders included in this report period
         </p>
       </div>
       <div className="overflow-x-auto">
@@ -346,31 +553,31 @@ function RecentSalesTable() {
             </tr>
           </thead>
           <tbody>
-            {recentSales.map(([id, customer, date, method, payment, status, total]) => (
-              <tr key={id} className="border-b border-neutral-100 last:border-b-0">
-                <td className="px-6 py-5 text-sm font-black text-main">{id}</td>
-                <td className="px-5 py-5 text-sm font-black text-slate-700">{customer}</td>
-                <td className="px-5 py-5 text-sm font-bold text-slate-500">{date}</td>
-                <td className="px-5 py-5 text-sm font-bold text-slate-500">{method}</td>
-                <td className="px-5 py-5 text-center">
-                  <Badge tone={payment === "Paid" ? "green" : "yellow"}>{payment}</Badge>
+            {rows.length ? (
+              rows.map(([id, customer, date, method, payment, status, total]) => (
+                <tr key={id} className="border-b border-neutral-100 last:border-b-0">
+                  <td className="px-6 py-5 text-sm font-black text-main">{id}</td>
+                  <td className="px-5 py-5 text-sm font-black text-slate-700">{customer}</td>
+                  <td className="px-5 py-5 text-sm font-bold text-slate-500">{date}</td>
+                  <td className="px-5 py-5 text-sm font-bold text-slate-500">{method}</td>
+                  <td className="px-5 py-5 text-center">
+                    <Badge tone={payment === "Paid" ? "green" : "yellow"}>{payment}</Badge>
+                  </td>
+                  <td className="px-5 py-5 text-center">
+                    <Badge tone={status === "Delivered" ? "green" : status === "Cancelled" ? "gray" : "blue"}>
+                      {status}
+                    </Badge>
+                  </td>
+                  <td className="px-6 py-5 text-sm font-black text-slate-800">{total}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={7} className="px-6 py-10 text-center text-sm font-bold text-slate-400">
+                  No orders found in this range.
                 </td>
-                <td className="px-5 py-5 text-center">
-                  <Badge
-                    tone={
-                      status === "Delivered"
-                        ? "green"
-                        : status === "Processing"
-                          ? "blue"
-                          : "gray"
-                    }
-                  >
-                    {status}
-                  </Badge>
-                </td>
-                <td className="px-6 py-5 text-sm font-black text-slate-800">{total}</td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
@@ -379,32 +586,48 @@ function RecentSalesTable() {
 }
 
 export default function SalesReportDashboard() {
+  const [reportType, setReportType] = useState("Monthly");
+  const [anchorDate, setAnchorDate] = useState(() => dateInput(new Date()));
+  const report = useSalesData(reportType, anchorDate);
+
   return (
-    <DashboardShell activeItem="Sales Reports">
-      <ReportHeader />
-      <MetricCards />
-      <FlowChart />
+    <DashboardShell activeItem="Sales Report">
+      <ReportHeader
+        reportType={reportType}
+        anchorDate={anchorDate}
+        onReportTypeChange={setReportType}
+        onAnchorDateChange={setAnchorDate}
+      />
+
+      {report.loading ? (
+        <div className="mt-6 rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold text-slate-500">
+          Loading live sales report...
+        </div>
+      ) : null}
+
+      <MetricCards cards={report.cards} />
+      <FlowChart flowPoints={report.flowPoints} />
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <PieChartPanel
           title="Category Mix"
           subtitle="Revenue split by product category"
-          data={categoryMix}
-          centerLabel="BDT 680"
-          gradient="conic-gradient(#173f31 0deg 223deg, #22c1e8 223deg 302deg, #f28c38 302deg 338deg, #a78bfa 338deg 360deg)"
+          data={report.categoryMix}
+          centerLabel={report.centerLabel}
+          gradient={chartGradient(report.categoryMix)}
         />
         <PieChartPanel
           title="Product Mix"
           subtitle="Top product revenue contribution"
-          data={productMix}
-          centerLabel="BDT 680"
-          gradient="conic-gradient(#173f31 0deg 198deg, #34d399 198deg 288deg, #22c1e8 288deg 331deg, #f28c38 331deg 360deg)"
+          data={report.productMix}
+          centerLabel={report.centerLabel}
+          gradient={chartGradient(report.productMix)}
         />
       </div>
 
       <div className="mt-6 grid gap-6 2xl:grid-cols-2">
-        <TopProductsTable />
-        <RecentSalesTable />
+        <TopProductsTable rows={report.topProducts} />
+        <RecentSalesTable rows={report.recentSales} />
       </div>
     </DashboardShell>
   );

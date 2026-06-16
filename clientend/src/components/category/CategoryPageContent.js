@@ -18,18 +18,23 @@ const emojiByAnimal = {
 
 function normalizeProduct(product, animalSlug) {
   const originalPrice = Number(product.price ?? 0);
+  const discountPrice = Number(product.discountPrice);
   const hasDiscount =
-    typeof product.discountPrice === "number" && product.discountPrice < originalPrice;
-  const categoryName =
-    product.category?.name || product.subcategory || product.category || "";
+    Number.isFinite(discountPrice) && discountPrice > 0 && discountPrice < originalPrice;
+  const categoryName = product.category?.name || product.subcategory || product.category || "";
   const categorySlug =
     product.category?.slug || slugifyCategory(categoryName || product.subcategory || "");
-  const activeAnimal =
-    product.animal?.slug || product.animal || product.category || animalSlug;
+  const activeAnimal = product.animal?.slug || product.animal || product.category || animalSlug;
 
   return {
     _id: product._id,
-    slug: product.slug || `${String(product.name || "product").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`,
+    slug:
+      product.slug ||
+      String(product.name || "product")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, ""),
     name: product.name,
     brand: product.brand?.name || product.brand || "",
     animal: activeAnimal,
@@ -39,10 +44,10 @@ function normalizeProduct(product, animalSlug) {
     },
     subcategory: categoryName || "",
     emoji: product.emoji || emojiByAnimal[animalSlug] || "🐾",
-    price: hasDiscount ? Number(product.discountPrice) : originalPrice,
+    price: hasDiscount ? discountPrice : originalPrice,
     oldPrice: hasDiscount ? originalPrice : null,
     discount: hasDiscount
-      ? `${Math.max(1, Math.round(((originalPrice - Number(product.discountPrice)) / originalPrice) * 100))}% off`
+      ? `${Math.max(1, Math.round(((originalPrice - discountPrice) / originalPrice) * 100))}% off`
       : null,
     ratingCount: product.ratingCount || "0",
     badges: product.badges?.length
@@ -139,7 +144,7 @@ export default function CategoryPageContent({
                   {isAllCategory ? animal.name : activeSubcategory} products
                 </h2>
                 <p className="mt-1 text-lg font-medium text-main/65">
-                  {visibleProducts.length} relevant products
+                  {visibleProducts.length} products available
                 </p>
               </div>
 
@@ -151,11 +156,24 @@ export default function CategoryPageContent({
               </select>
             </div>
 
-            <div className="mt-7 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {visibleProducts.map((product) => (
-                <ProductCard key={product._id || `${product.brand}-${product.name}`} product={product} />
-              ))}
-            </div>
+            {visibleProducts.length > 0 ? (
+              <div className="mt-7 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+                {visibleProducts.map((product) => (
+                  <ProductCard
+                    key={product.slug || product._id || `${product.brand}-${product.name}`}
+                    product={product}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="mt-7 rounded-2xl border border-dashed border-neutral-200 bg-white px-6 py-16 text-center shadow-[0_16px_45px_rgba(23,63,49,0.08)]">
+                <p className="text-xl font-black text-main">No products yet</p>
+                <p className="mt-2 text-base font-medium text-main/65">
+                  Products for {isAllCategory ? animal.name : activeSubcategory} will appear
+                  here once they are added in admin.
+                </p>
+              </div>
+            )}
           </section>
         </div>
       </Container>

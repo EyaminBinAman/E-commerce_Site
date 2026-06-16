@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import DashboardShell, { Icon } from "@/components/DashboardShell";
+import { useAdminAuth } from "@/components/AuthGate";
 import { useToast } from "@/components/ui/toast";
+import { logoutAdmin } from "@/lib/adminApi";
 import {
   clearAdminSession,
   DEFAULT_ADMIN_PROFILE,
@@ -21,8 +23,11 @@ const initialSecurity = {
 export default function ProfilePage() {
   const router = useRouter();
   const { showToast } = useToast();
+  const { setAdmin } = useAdminAuth();
   const [profile, setProfile] = useState(() => loadAdminSession());
   const [security, setSecurity] = useState(initialSecurity);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isSigningOut, setIsSigningOut] = useState(false);
 
   const initials = useMemo(() => {
     const parts = String(profile.name || "").trim().split(/\s+/);
@@ -45,12 +50,14 @@ export default function ProfilePage() {
     const next = { ...profile, initials };
     setProfile(next);
     saveAdminSession(next);
+    setIsEditingProfile(false);
     showToast({ tone: "success", title: "Profile saved." });
   };
 
   const resetProfile = () => {
     setProfile(DEFAULT_ADMIN_PROFILE);
     saveAdminSession(DEFAULT_ADMIN_PROFILE);
+    setIsEditingProfile(false);
     showToast({ tone: "info", title: "Profile reset to defaults." });
   };
 
@@ -69,10 +76,24 @@ export default function ProfilePage() {
     showToast({ tone: "success", title: "Password updated in this demo profile." });
   };
 
-  const signOut = () => {
-    clearAdminSession();
-    showToast({ tone: "success", title: "Signed out." });
-    router.push("/login");
+  const signOut = async () => {
+    setIsSigningOut(true);
+
+    try {
+      await logoutAdmin();
+      clearAdminSession();
+      setAdmin(null);
+      showToast({ tone: "success", title: "Signed out." });
+      router.replace("/login");
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: "Sign out failed",
+        description: error.message,
+      });
+    } finally {
+      setIsSigningOut(false);
+    }
   };
 
   return (
@@ -122,23 +143,25 @@ export default function ProfilePage() {
             </p>
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={saveProfile}
-              className="inline-flex h-11 items-center gap-2 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover"
-            >
-              <Icon name="check" className="h-4 w-4" />
-              Save profile
-            </button>
-            <button
-              type="button"
-              onClick={resetProfile}
-              className="inline-flex h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 text-sm font-black text-slate-600 transition hover:bg-neutral-50"
-            >
-              Reset
-            </button>
-          </div>
+          {isEditingProfile ? (
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={saveProfile}
+                className="inline-flex h-11 items-center gap-2 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover"
+              >
+                <Icon name="check" className="h-4 w-4" />
+                Save profile
+              </button>
+              <button
+                type="button"
+                onClick={resetProfile}
+                className="inline-flex h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 text-sm font-black text-slate-600 transition hover:bg-neutral-50"
+              >
+                Reset
+              </button>
+            </div>
+          ) : null}
         </aside>
 
         <div className="space-y-5">
@@ -152,17 +175,24 @@ export default function ProfilePage() {
                   Edit profile information
                 </h2>
               </div>
-              <Icon name="user" className="h-6 w-6 text-main/70" />
+              <button
+                type="button"
+                onClick={() => setIsEditingProfile((value) => !value)}
+                className="inline-flex h-11 items-center gap-2 rounded-xl border border-neutral-200 bg-white px-4 text-sm font-black text-main transition hover:bg-mainSoft/60"
+              >
+                <Icon name="user" className="h-4 w-4" />
+                {isEditingProfile ? "Cancel edit" : "Edit"}
+              </button>
             </div>
 
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <Field label="Full name" name="name" value={profile.name} onChange={handleProfileChange} />
-              <Field label="Email" name="email" value={profile.email} onChange={handleProfileChange} type="email" />
-              <Field label="Phone" name="phone" value={profile.phone} onChange={handleProfileChange} />
-              <Field label="Title" name="title" value={profile.title} onChange={handleProfileChange} />
-              <Field label="Location" name="location" value={profile.location} onChange={handleProfileChange} />
-              <Field label="Timezone" name="timezone" value={profile.timezone} onChange={handleProfileChange} />
-              <Field label="Status" name="status" value={profile.status} onChange={handleProfileChange} />
+              <Field label="Full name" name="name" value={profile.name} onChange={handleProfileChange} disabled={!isEditingProfile} />
+              <Field label="Email" name="email" value={profile.email} onChange={handleProfileChange} type="email" disabled={!isEditingProfile} />
+              <Field label="Phone" name="phone" value={profile.phone} onChange={handleProfileChange} disabled={!isEditingProfile} />
+              <Field label="Title" name="title" value={profile.title} onChange={handleProfileChange} disabled={!isEditingProfile} />
+              <Field label="Location" name="location" value={profile.location} onChange={handleProfileChange} disabled={!isEditingProfile} />
+              <Field label="Timezone" name="timezone" value={profile.timezone} onChange={handleProfileChange} disabled={!isEditingProfile} />
+              <Field label="Status" name="status" value={profile.status} onChange={handleProfileChange} disabled={!isEditingProfile} />
               <div className="sm:col-span-2">
                 <label className="block">
                   <span className="text-xs font-black uppercase tracking-[0.22em] text-main/75">
@@ -173,7 +203,8 @@ export default function ProfilePage() {
                     rows={5}
                     value={profile.bio}
                     onChange={handleProfileChange}
-                    className="mt-1.5 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold leading-6 text-slate-700 outline-none transition placeholder:text-slate-300 focus:border-main"
+                    disabled={!isEditingProfile}
+                    className="mt-1.5 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-semibold leading-6 text-slate-700 outline-none transition placeholder:text-slate-300 focus:border-main disabled:bg-neutral-50 disabled:text-slate-500"
                   />
                 </label>
               </div>
@@ -229,10 +260,11 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={signOut}
+                disabled={isSigningOut}
                 className="inline-flex h-11 items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-4 text-sm font-black text-red-600 transition hover:bg-red-100"
               >
                 <Icon name="log-in" className="h-4 w-4 rotate-180" />
-                Sign out
+                {isSigningOut ? "Signing out..." : "Sign out"}
               </button>
             </div>
           </section>
@@ -253,7 +285,7 @@ function ProfileChip({ label, value }) {
   );
 }
 
-function Field({ label, name, value, onChange, type = "text" }) {
+function Field({ label, name, value, onChange, type = "text", disabled = false }) {
   return (
     <label className="block">
       <span className="text-xs font-black uppercase tracking-[0.22em] text-main/75">
@@ -264,7 +296,8 @@ function Field({ label, name, value, onChange, type = "text" }) {
         value={value}
         onChange={onChange}
         type={type}
-        className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-300 focus:border-main"
+        disabled={disabled}
+        className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-300 focus:border-main disabled:bg-neutral-50 disabled:text-slate-500"
       />
     </label>
   );

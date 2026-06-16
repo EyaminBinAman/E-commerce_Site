@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 
 const Banner = require("../../models/Banner");
+const { deleteBannerImageFile } = require("../../utils/bannerFiles");
 
 const bannerTypeMap = {
   hero: "hero-banner",
@@ -25,6 +26,18 @@ const normalizeBannerType = (type) => {
   return bannerTypeMap[normalized] || bannerTypeMap[normalized.replace(/-/g, "")] || null;
 };
 
+const parseBoolean = (value) => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    return ["true", "1", "yes", "on"].includes(value.trim().toLowerCase());
+  }
+
+  return Boolean(value);
+};
+
 const isInvalidBannerId = (id, res) => {
   if (mongoose.Types.ObjectId.isValid(id)) {
     return false;
@@ -45,7 +58,7 @@ const getNextSlideNumber = async (bannerType) => {
   return lastBanner ? lastBanner.slideNumber + 1 : 1;
 };
 
-const buildBannerData = async (body, currentBanner = null) => {
+const buildBannerData = async (body, currentBanner = null, file = null) => {
   const data = {};
 
   if (body.name !== undefined) {
@@ -57,11 +70,25 @@ const buildBannerData = async (body, currentBanner = null) => {
   }
 
   if (body.isActive !== undefined) {
-    data.isActive = Boolean(body.isActive);
+    data.isActive = parseBoolean(body.isActive);
   }
 
-  if (body.slideNumber !== undefined) {
+  if (body.slideNumber !== undefined && body.slideNumber !== "") {
     data.slideNumber = Number(body.slideNumber);
+  }
+
+  if (body.linkUrl !== undefined) {
+    const linkUrl = typeof body.linkUrl === "string" ? body.linkUrl.trim() : "";
+    data.linkUrl = linkUrl || null;
+  }
+
+  if (body.altText !== undefined) {
+    const altText = typeof body.altText === "string" ? body.altText.trim() : "";
+    data.altText = altText || null;
+  }
+
+  if (file) {
+    data.imageUrl = `/uploads/banners/${file.filename}`;
   }
 
   const bannerType = data.bannerType || currentBanner?.bannerType;
@@ -73,7 +100,7 @@ const buildBannerData = async (body, currentBanner = null) => {
   return data;
 };
 
-const validateBannerPayload = (data, isUpdate = false) => {
+const validateBannerPayload = (data, { isUpdate = false, hasImage = false } = {}) => {
   if (!isUpdate && !data.name) {
     return "Banner name is required";
   }
@@ -90,8 +117,8 @@ const validateBannerPayload = (data, isUpdate = false) => {
     return "Banner type must be hero-banner, promo-banner, or slider-banner";
   }
 
-  if (!isUpdate && data.slideNumber === undefined) {
-    return "Banner slide number is required";
+  if (!isUpdate && !hasImage && !data.imageUrl) {
+    return "Banner image is required";
   }
 
   if (
@@ -129,7 +156,10 @@ const ensurePromoBannerLimit = async (bannerData, currentBanner = null) => {
 const getBanners = async (req, res, next) => {
   try {
     const bannerType = normalizeBannerType(req.query.type);
-    const filter = { isActive: true };
+    const includeInactive = ["1", "true", "yes"].includes(
+      String(req.query.includeInactive || "").toLowerCase()
+    );
+    const filter = includeInactive ? {} : { isActive: true };
 
     if (bannerType) {
       filter.bannerType = bannerType;
@@ -153,10 +183,16 @@ const getBanners = async (req, res, next) => {
 
 const postBanner = async (req, res, next) => {
   try {
-    const data = await buildBannerData(req.body);
-    const validationMessage = validateBannerPayload(data);
+    const data = await buildBannerData(req.body, null, req.file);
+    const validationMessage = validateBannerPayload(data, {
+      hasImage: Boolean(req.file),
+    });
 
     if (validationMessage) {
+      if (req.file) {
+        deleteBannerImageFile(data.imageUrl);
+      }
+
       return res.status(400).json({
         success: false,
         message: validationMessage,
@@ -166,6 +202,10 @@ const postBanner = async (req, res, next) => {
     const limitMessage = await ensurePromoBannerLimit(data);
 
     if (limitMessage) {
+      if (req.file) {
+        deleteBannerImageFile(data.imageUrl);
+      }
+
       return res.status(400).json({
         success: false,
         message: limitMessage,
@@ -180,6 +220,10 @@ const postBanner = async (req, res, next) => {
       banner,
     });
   } catch (error) {
+    if (req.file) {
+      deleteBannerImageFile(`/uploads/banners/${req.file.filename}`);
+    }
+
     next(error);
   }
 };
@@ -195,16 +239,28 @@ const updateBanner = async (req, res, next) => {
     const banner = await Banner.findById(id);
 
     if (!banner) {
+      if (req.file) {
+        deleteBannerImageFile(`/uploads/banners/${req.file.filename}`);
+      }
+
       return res.status(404).json({
         success: false,
         message: "Banner not found",
       });
     }
 
-    const data = await buildBannerData(req.body, banner);
-    const validationMessage = validateBannerPayload(data, true);
+    const previousImageUrl = banner.imageUrl;
+    const data = await buildBannerData(req.body, banner, req.file);
+    const validationMessage = validateBannerPayload(data, {
+      isUpdate: true,
+      hasImage: Boolean(req.file),
+    });
 
     if (validationMessage) {
+      if (req.file) {
+        deleteBannerImageFile(data.imageUrl);
+      }
+
       return res.status(400).json({
         success: false,
         message: validationMessage,
@@ -214,6 +270,10 @@ const updateBanner = async (req, res, next) => {
     const limitMessage = await ensurePromoBannerLimit(data, banner);
 
     if (limitMessage) {
+      if (req.file) {
+        deleteBannerImageFile(data.imageUrl);
+      }
+
       return res.status(400).json({
         success: false,
         message: limitMessage,
@@ -223,12 +283,20 @@ const updateBanner = async (req, res, next) => {
     Object.assign(banner, data);
     await banner.save();
 
+    if (req.file && previousImageUrl && previousImageUrl !== banner.imageUrl) {
+      deleteBannerImageFile(previousImageUrl);
+    }
+
     return res.status(200).json({
       success: true,
       message: "Banner updated successfully",
       banner,
     });
   } catch (error) {
+    if (req.file) {
+      deleteBannerImageFile(`/uploads/banners/${req.file.filename}`);
+    }
+
     next(error);
   }
 };
@@ -249,6 +317,8 @@ const deleteBanner = async (req, res, next) => {
         message: "Banner not found",
       });
     }
+
+    deleteBannerImageFile(banner.imageUrl);
 
     return res.status(200).json({
       success: true,
@@ -277,7 +347,9 @@ const toggleBannerActive = async (req, res, next) => {
     }
 
     const nextIsActive =
-      typeof req.body.isActive === "boolean" ? req.body.isActive : !banner.isActive;
+      typeof req.body.isActive === "boolean"
+        ? req.body.isActive
+        : parseBoolean(req.body.isActive ?? !banner.isActive);
     const limitMessage = await ensurePromoBannerLimit({ isActive: nextIsActive }, banner);
 
     if (limitMessage) {

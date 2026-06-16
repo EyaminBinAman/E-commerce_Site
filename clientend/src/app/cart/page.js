@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import {
   HiMinus,
   HiOutlineShoppingBag,
@@ -12,6 +13,9 @@ import {
 
 import { useCart } from "@/components/CartProvider";
 import Container from "@/components/Container";
+import LoginPopover from "@/components/LoginPopover";
+import { useAuth } from "@/context/AuthContext";
+import { saveCheckoutPrefs } from "@/lib/checkoutStorage";
 
 const apiOrigin =
   process.env.NEXT_PUBLIC_API_ORIGIN || "http://localhost:3000";
@@ -22,6 +26,31 @@ const formatPrice = (value) =>
     currency: "BDT",
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
+
+const getItemDiscount = (item) => {
+  const regularPrice = Number(item.product?.price);
+  const discountPrice = Number(item.product?.discountPrice);
+
+  if (
+    !Number.isFinite(regularPrice) ||
+    !Number.isFinite(discountPrice) ||
+    discountPrice >= regularPrice
+  ) {
+    return null;
+  }
+
+  const priceAdjustment = Number(item.variant?.priceAdjustment || 0);
+  const originalUnitPrice = regularPrice + priceAdjustment;
+  const savedPerItem = regularPrice - discountPrice;
+  const savedTotal = savedPerItem * Number(item.quantity || 1);
+  const percentage = Math.round((savedPerItem / regularPrice) * 100);
+
+  return {
+    originalUnitPrice,
+    savedTotal,
+    percentage,
+  };
+};
 
 const getImageUrl = (src) => {
   if (!src) {
@@ -36,6 +65,8 @@ const getImageUrl = (src) => {
 };
 
 export default function CartPage() {
+  const router = useRouter();
+  const { user, loaded } = useAuth();
   const {
     cartItems,
     cartSubtotal,
@@ -51,6 +82,17 @@ export default function CartPage() {
   const [summary, setSummary] = useState(null);
   const [summaryMessage, setSummaryMessage] = useState("");
   const [isCalculating, setIsCalculating] = useState(false);
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const hasShownCheckoutPrompt = useRef(false);
+
+  useEffect(() => {
+    if (!loaded || user || !cartItems.length || hasShownCheckoutPrompt.current) {
+      return;
+    }
+
+    hasShownCheckoutPrompt.current = true;
+    setIsLoginOpen(true);
+  }, [cartItems.length, loaded, user]);
 
   useEffect(() => {
     if (!cartItems.length) {
@@ -99,6 +141,19 @@ export default function CartPage() {
     grandTotal: cartSubtotal,
   };
 
+  const handleCheckout = () => {
+    if (!user) {
+      setIsLoginOpen(true);
+      return;
+    }
+
+    saveCheckoutPrefs({
+      promoCode: appliedPromoCode,
+      deliveryZone,
+    });
+    router.push("/checkout");
+  };
+
   return (
     <main className="bg-white">
       <Container className="py-8 lg:py-12">
@@ -109,13 +164,13 @@ export default function CartPage() {
           <h1 className="text-3xl font-black text-neutral-950">Your Cart</h1>
         </div>
 
-        {isLoading ? (
+        {!loaded || isLoading ? (
           <div className="mt-8 rounded-lg border border-neutral-200 p-8 text-neutral-600">
             Loading cart...
           </div>
         ) : null}
 
-        {!isLoading && cartItems.length === 0 ? (
+        {loaded && !isLoading && cartItems.length === 0 ? (
           <div className="mt-8 rounded-lg border border-neutral-200 p-8 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-main/10 text-2xl text-main">
               <HiOutlineShoppingBag />
@@ -135,14 +190,17 @@ export default function CartPage() {
           </div>
         ) : null}
 
-        {cartItems.length > 0 ? (
+        {loaded && !isLoading && cartItems.length > 0 ? (
           <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_360px]">
             <section className="space-y-4">
-              {cartItems.map((item) => (
-                <article
-                  key={item._id}
-                  className="grid gap-4 rounded-lg border border-neutral-200 p-4 sm:grid-cols-[120px_1fr] lg:grid-cols-[120px_1fr_auto]"
-                >
+              {cartItems.map((item) => {
+                const discount = getItemDiscount(item);
+
+                return (
+                  <article
+                    key={item._id}
+                    className="grid gap-4 rounded-lg border border-neutral-200 p-4 sm:grid-cols-[120px_1fr] lg:grid-cols-[120px_1fr_auto]"
+                  >
                   <Link
                     href={`/product/${item.product.slug}`}
                     className="relative aspect-square overflow-hidden rounded-md bg-neutral-50"
@@ -175,9 +233,21 @@ export default function CartPage() {
                     >
                       {item.isAvailable ? `${item.stockQuantity} in stock` : "Unavailable"}
                     </p>
-                    <p className="mt-3 text-base font-black text-main">
-                      {formatPrice(item.finalUnitPrice)}
-                    </p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <p className="text-base font-black text-main">
+                        {formatPrice(item.finalUnitPrice)}
+                      </p>
+                      {discount ? (
+                        <>
+                          <p className="text-sm font-bold text-neutral-400 line-through">
+                            {formatPrice(discount.originalUnitPrice)}
+                          </p>
+                          <p className="text-sm font-black text-emerald-700">
+                            Save {formatPrice(discount.savedTotal)} ({discount.percentage}%)
+                          </p>
+                        </>
+                      ) : null}
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap items-center gap-3 lg:flex-col lg:items-end lg:justify-between">
@@ -229,8 +299,9 @@ export default function CartPage() {
                       </button>
                     </div>
                   </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </section>
 
             <aside className="h-fit rounded-lg border border-neutral-200 p-5">
@@ -359,6 +430,7 @@ export default function CartPage() {
               </div>
               <button
                 type="button"
+                onClick={handleCheckout}
                 className="mt-6 flex h-12 w-full items-center justify-center rounded-full bg-main px-6 text-sm font-black text-white transition-all duration-300 hover:-translate-y-0.5 hover:bg-main/90"
               >
                 Proceed to Checkout
@@ -374,6 +446,20 @@ export default function CartPage() {
           </div>
         ) : null}
       </Container>
+
+      <LoginPopover
+        open={isLoginOpen}
+        onClose={() => setIsLoginOpen(false)}
+        onSuccess={() => {
+          setIsLoginOpen(false);
+          saveCheckoutPrefs({
+            promoCode: appliedPromoCode,
+            deliveryZone,
+          });
+          router.push("/checkout");
+        }}
+        description="You need to login for checkout. Sign in to continue with your order."
+      />
     </main>
   );
 }

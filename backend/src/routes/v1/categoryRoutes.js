@@ -15,15 +15,9 @@ const {
 router.get("/get-categories", getCategories);
 
 // Admin only
-router.post("/create-category", 
-  protect, adminOnly, 
-  createCategory);
-router.patch("/update-category/:slug", 
-  protect, adminOnly, 
-  updateCategoryBySlug);
-router.delete("/delete-category/:slug",
-  protect, adminOnly, 
-  deleteCategoryBySlug);
+router.post("/create-category", protect, adminOnly, createCategory);
+router.patch("/update-category/:slug", protect, adminOnly, updateCategoryBySlug);
+router.delete("/delete-category/:slug", protect, adminOnly, deleteCategoryBySlug);
 router.patch(
   "/active-on-off-animals/:slug",
   protect,
