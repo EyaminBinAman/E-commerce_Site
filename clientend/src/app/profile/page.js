@@ -35,7 +35,7 @@ import {
   formatBDT,
   getInitials,
   statusStyles,
-} from "@/lib/profileMock";
+} from "@/lib/profileUtils";
 
 const getImageUrl = (src) => {
   if (!src) return null;
@@ -806,6 +806,31 @@ const emptyAddress = {
   isDefault: false,
 };
 
+function normalizeAddressForForm(address = {}) {
+  return {
+    ...emptyAddress,
+    ...address,
+    line: address.line || address.address || "",
+    postal: address.postal || address.postalCode || "",
+    name: address.name || address.fullName || "",
+  };
+}
+
+function buildAddressPayload(address) {
+  return {
+    label: String(address.label || "").trim(),
+    name: String(address.name || "").trim(),
+    phone: String(address.phone || "").trim(),
+    line: String(address.line || address.address || "").trim(),
+    address: String(address.line || address.address || "").trim(),
+    area: String(address.area || "").trim(),
+    city: String(address.city || "").trim(),
+    postal: String(address.postal || address.postalCode || "").trim(),
+    postalCode: String(address.postal || address.postalCode || "").trim(),
+    isDefault: Boolean(address.isDefault),
+  };
+}
+
 function Addresses({ addresses, user, onUserUpdated, onMessage }) {
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(null);
@@ -817,7 +842,7 @@ function Addresses({ addresses, user, onUserUpdated, onMessage }) {
     setEditing("new");
     setForm({
       ...emptyAddress,
-      name: user.fullName,
+      name: user.fullName || user.name || "",
       phone: user.phone || "",
       isDefault: !addresses.length,
     });
@@ -826,7 +851,7 @@ function Addresses({ addresses, user, onUserUpdated, onMessage }) {
   const startEdit = (address) => {
     setError("");
     setEditing(address.id);
-    setForm({ ...emptyAddress, ...address });
+    setForm(normalizeAddressForForm(address));
   };
 
   const handleSave = async (event) => {
@@ -841,7 +866,7 @@ function Addresses({ addresses, user, onUserUpdated, onMessage }) {
 
       await apiRequest(path, {
         method,
-        body: JSON.stringify(form),
+        body: JSON.stringify(buildAddressPayload(form)),
       });
       await onUserUpdated();
       setEditing(null);
@@ -897,44 +922,44 @@ function Addresses({ addresses, user, onUserUpdated, onMessage }) {
           <FormField
             label="Label"
             name="label"
-            defaultValue={form.label}
+            value={form.label}
             onChange={(value) => setForm((current) => ({ ...current, label: value }))}
           />
           <FormField
             label="Receiver Name"
             name="name"
-            defaultValue={form.name}
+            value={form.name}
             onChange={(value) => setForm((current) => ({ ...current, name: value }))}
           />
           <FormField
             label="Phone"
             name="phone"
-            defaultValue={form.phone}
+            value={form.phone}
             onChange={(value) => setForm((current) => ({ ...current, phone: value }))}
           />
           <FormField
             label="City"
             name="city"
-            defaultValue={form.city}
+            value={form.city}
             onChange={(value) => setForm((current) => ({ ...current, city: value }))}
           />
           <FormField
             label="Area"
             name="area"
-            defaultValue={form.area}
+            value={form.area}
             onChange={(value) => setForm((current) => ({ ...current, area: value }))}
           />
           <FormField
             label="Postal Code"
             name="postal"
-            defaultValue={form.postal}
+            value={form.postal}
             onChange={(value) => setForm((current) => ({ ...current, postal: value }))}
           />
           <div className="sm:col-span-2">
             <FormField
               label="Address"
               name="line"
-              defaultValue={form.line}
+              value={form.line}
               onChange={(value) => setForm((current) => ({ ...current, line: value }))}
             />
           </div>

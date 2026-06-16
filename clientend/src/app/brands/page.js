@@ -4,6 +4,9 @@ import { getBrandNavbarView } from "@/lib/brandApi";
 
 export default async function BrandsPage() {
   const brands = await getBrandNavbarView();
-  const fallbackSlug = brands[0]?.slug || "orijen";
-  redirect(`/brands/${fallbackSlug}`);
+  if (!brands.length) {
+    redirect("/");
+  }
+
+  redirect(`/brands/${brands[0].slug}`);
 }

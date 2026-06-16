@@ -19,7 +19,7 @@ import LoginPopover from "@/components/LoginPopover";
 import { useWishlist } from "@/components/WishlistProvider";
 import { useAuth } from "@/context/AuthContext";
 import { API_BASE_URL } from "@/lib/api";
-import { getInitials } from "@/lib/profileMock";
+import { getInitials } from "@/lib/profileUtils";
 
 const secondaryActions = [
   { id: "wishlist", label: "Wishlist", icon: HiOutlineHeart, href: "/wishlist" },

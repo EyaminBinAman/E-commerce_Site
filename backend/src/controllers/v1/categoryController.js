@@ -1,8 +1,9 @@
 const Category = require("../../models/Category");
 const Product = require("../../models/Product");
+const { deleteImageFile } = require("../../utils/imageFiles");
+
 const escapeRegex = (value = "") => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-// GET /get-categories
 const getCategories = async (req, res, next) => {
   try {
     const includeInactive = ["1", "true", "yes"].includes(
@@ -24,22 +25,23 @@ const getCategories = async (req, res, next) => {
   }
 };
 
-// POST /create-category
 const createCategory = async (req, res, next) => {
   try {
-    const { name, animalName, image } = req.body;
+    const { name, animalName, image, icon } = req.body;
+    const uploadedImage = req.file ? `/uploads/categories/${req.file.filename}` : null;
+    const trimmedName = name?.trim();
+    const trimmedAnimalName = animalName?.trim();
 
-    if (!name || !animalName) {
+    if (!trimmedName || !trimmedAnimalName) {
       return res.status(400).json({
         success: false,
         message: "Name and animalName are required",
       });
     }
 
-    // Prevent duplicate category names
     const existingCategory = await Category.findOne({
       name: {
-        $regex: `^${escapeRegex(name.trim())}$`,
+        $regex: `^${escapeRegex(trimmedName)}$`,
         $options: "i",
       },
       isDeleted: { $ne: true },
@@ -53,9 +55,12 @@ const createCategory = async (req, res, next) => {
     }
 
     const category = await Category.create({
-      name,
-      animalName,
-      image: image || null,
+      name: trimmedName,
+      animalName: trimmedAnimalName,
+      icon: String(icon || "🐾").trim() || "🐾",
+      image:
+        uploadedImage ||
+        (typeof image === "string" ? image.trim() || null : null),
     });
 
     return res.status(201).json({
@@ -64,25 +69,31 @@ const createCategory = async (req, res, next) => {
       category,
     });
   } catch (error) {
+    if (req.file) {
+      deleteImageFile(`/uploads/categories/${req.file.filename}`, "categories");
+    }
     next(error);
   }
 };
 
-// PATCH /update-category/:slug
 const updateCategoryBySlug = async (req, res, next) => {
   try {
     const { slug } = req.params;
-    const { name, animalName, image } = req.body;
+    const { name, animalName, image, icon } = req.body;
+    const uploadedImage = req.file ? `/uploads/categories/${req.file.filename}` : null;
     const category = await Category.findOne({ slug });
 
     if (!category) {
+      if (req.file) {
+        deleteImageFile(`/uploads/categories/${req.file.filename}`, "categories");
+      }
+
       return res.status(404).json({
         success: false,
         message: "Category not found",
       });
     }
 
-    // Duplicate name check
     if (name) {
       const existingCategory = await Category.findOne({
         name: {
@@ -94,24 +105,37 @@ const updateCategoryBySlug = async (req, res, next) => {
       });
 
       if (existingCategory) {
+        if (req.file) {
+          deleteImageFile(`/uploads/categories/${req.file.filename}`, "categories");
+        }
+
         return res.status(400).json({
           success: false,
           message: "Category name already exists",
         });
       }
 
-      category.name = name;
+      category.name = name.trim();
     }
 
     if (animalName) {
-      category.animalName = animalName;
+      category.animalName = animalName.trim();
     }
 
-    if (typeof image === "string") {
+    if (typeof icon === "string") {
+      category.icon = icon.trim() || "🐾";
+    }
+
+    if (uploadedImage) {
+      const previousImage = category.image;
+      category.image = uploadedImage;
+      if (previousImage && previousImage !== uploadedImage) {
+        deleteImageFile(previousImage, "categories");
+      }
+    } else if (typeof image === "string") {
       category.image = image.trim() || null;
     }
 
-    // save() triggers slug middleware
     await category.save();
 
     return res.status(200).json({
@@ -120,11 +144,13 @@ const updateCategoryBySlug = async (req, res, next) => {
       category,
     });
   } catch (error) {
+    if (req.file) {
+      deleteImageFile(`/uploads/categories/${req.file.filename}`, "categories");
+    }
     next(error);
   }
 };
 
-// DELETE /delete-category/:slug
 const deleteCategoryBySlug = async (req, res, next) => {
   try {
     const { slug } = req.params;
@@ -149,6 +175,8 @@ const deleteCategoryBySlug = async (req, res, next) => {
       });
     }
 
+    deleteImageFile(category.image, "categories");
+
     category.isDeleted = true;
     category.isActive = false;
     await category.save();
@@ -163,7 +191,6 @@ const deleteCategoryBySlug = async (req, res, next) => {
   }
 };
 
-// PATCH /active-on-off-animals/:slug
 const toggleCategoryActiveBySlug = async (req, res, next) => {
   try {
     const { slug } = req.params;
@@ -186,14 +213,11 @@ const toggleCategoryActiveBySlug = async (req, res, next) => {
     }
 
     category.isActive = isActive;
-
     await category.save();
 
     return res.status(200).json({
       success: true,
-      message: `Category ${
-        isActive ? "activated" : "deactivated"
-      } successfully`,
+      message: `Category ${isActive ? "activated" : "deactivated"} successfully`,
       category,
     });
   } catch (error) {

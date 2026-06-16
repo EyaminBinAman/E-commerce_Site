@@ -7,6 +7,7 @@ import DashboardShell, { Badge, Icon } from "@/components/DashboardShell";
 import { useToast } from "@/components/ui/toast";
 import { adminApi } from "@/lib/adminApi";
 import { formatTk, mapBackendOrderToAdminRow } from "@/lib/orderApi";
+import { API_BASE_URL } from "@/lib/adminApi";
 
 function formatDate(value) {
   if (!value) return "—";
@@ -25,6 +26,12 @@ function formatAddress(address = {}) {
     address.postal || address.postalCode,
   ].filter(Boolean);
   return parts.join(", ") || "—";
+}
+
+function getImageUrl(src) {
+  if (!src) return null;
+  if (src.startsWith("http")) return src;
+  return `${API_BASE_URL.replace("/api/v1", "")}${src}`;
 }
 
 export default function AccountDetailsDashboard({ accountId }) {
@@ -108,9 +115,16 @@ export default function AccountDetailsDashboard({ accountId }) {
                   <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">
                     Personal Info
                   </p>
-                  <h2 className="mt-2 text-xl font-black text-main">
-                    {account.name}
-                  </h2>
+                  <div className="mt-2 flex items-center gap-3">
+                    {account.profilePic ? (
+                      <img
+                        src={getImageUrl(account.profilePic)}
+                        alt={account.name}
+                        className="h-12 w-12 rounded-2xl border border-neutral-200 object-cover"
+                      />
+                    ) : null}
+                    <h2 className="text-xl font-black text-main">{account.name}</h2>
+                  </div>
                 </div>
                 <Badge tone={account.role === "admin" ? "blue" : "gray"}>
                   {account.role === "admin" ? "Admin" : "Client"}
@@ -120,6 +134,10 @@ export default function AccountDetailsDashboard({ accountId }) {
               <div className="mt-5 space-y-3">
                 <InfoRow label="Email" value={account.email} />
                 <InfoRow label="Phone" value={account.phone || "—"} />
+                <InfoRow
+                  label="Account ID"
+                  value={account.id || "—"}
+                />
                 <InfoRow
                   label="Verification"
                   value={account.isVerified ? "Verified" : "Not verified"}

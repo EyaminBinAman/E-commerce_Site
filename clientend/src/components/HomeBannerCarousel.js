@@ -14,36 +14,9 @@ import {
 import { apiRequest } from "@/lib/api";
 import { mapBannerToSlide } from "@/lib/bannerApi";
 
-const fallbackSlides = [
-  {
-    id: "fallback-1",
-    src: "/home-pet-banner.png",
-    alt: "Pet supplies arranged for online shopping",
-    href: null,
-  },
-  {
-    id: "fallback-2",
-    src: "/home-pet-banner-food.png",
-    alt: "Dog and cat food with pet care essentials",
-    href: null,
-  },
-  {
-    id: "fallback-3",
-    src: "/home-pet-banner-small-pets.png",
-    alt: "Fish, bird, and small pet supplies",
-    href: null,
-  },
-];
-
-const slideAssets = {
-  "hero-banner": "/home-pet-banner.png",
-  "promo-banner": "/home-pet-banner-food.png",
-  "slider-banner": "/home-pet-banner-small-pets.png",
-};
-
 export default function HomeBannerCarousel({ initialBanners = [] }) {
   const [bannerSlides, setBannerSlides] = useState(
-    initialBanners.length ? initialBanners.map(mapBannerToSlide) : fallbackSlides
+    initialBanners.map(mapBannerToSlide)
   );
 
   useEffect(() => {
@@ -59,18 +32,16 @@ export default function HomeBannerCarousel({ initialBanners = [] }) {
     apiRequest("/banners/get-banners")
       .then((data) => {
         if (!alive) return;
-
-        const nextSlides = (data.banners || []).map((banner, index) => ({
-          id: banner._id || banner.id || `banner-${index}`,
-          src: slideAssets[banner.bannerType] || fallbackSlides[0].src,
-          alt: banner.name || "Home banner",
+        const nextSlides = (data.banners || []).map((banner) => ({
+          id: banner._id || banner.id,
+          src: banner.imageUrl,
+          alt: banner.altText || banner.name || "Home banner",
           href: banner.linkUrl || null,
         }));
-
-        setBannerSlides(nextSlides.length ? nextSlides : fallbackSlides);
+        setBannerSlides(nextSlides);
       })
       .catch(() => {
-        if (alive) setBannerSlides(fallbackSlides);
+        if (alive) setBannerSlides([]);
       });
 
     return () => {
@@ -78,13 +49,14 @@ export default function HomeBannerCarousel({ initialBanners = [] }) {
     };
   }, [initialBanners]);
 
-  const slides = useMemo(
-    () => (bannerSlides.length ? bannerSlides : fallbackSlides),
-    [bannerSlides]
-  );
+  const slides = useMemo(() => bannerSlides, [bannerSlides]);
+
+  if (!slides.length) {
+    return null;
+  }
 
   return (
-    <section className="w-full bg-white px-4 py-4 sm:px-6 lg:px-8">
+    <section className="relative z-0 mt-4 w-full bg-white px-4 py-4 sm:px-6 lg:px-8">
       <Carousel opts={{ align: "start", loop: slides.length > 1 }} className="w-full">
         <CarouselContent>
           {slides.map((slide, index) => (

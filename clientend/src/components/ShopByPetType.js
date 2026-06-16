@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import Image from "next/image";
 
 import Container from "@/components/Container";
-import { getCategoryAnimalsView } from "@/lib/categoryApi";
 import {
   Carousel,
   CarouselContent,
@@ -13,45 +13,7 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import { apiRequest } from "@/lib/api";
-
-const fallbackCategories = [
-  {
-    name: "Dogs",
-    description: "Food, toys, beds, meds",
-    icon: "🐶",
-    href: "/categories/dogs",
-  },
-  {
-    name: "Cats",
-    description: "Litter, food, trees, toys",
-    icon: "🐱",
-    href: "/categories/cats",
-  },
-  {
-    name: "Fish",
-    description: "Food, tanks, filters, care",
-    icon: "🐠",
-    href: "/categories/fish",
-  },
-  {
-    name: "Birds",
-    description: "Cages, food, perches, toys",
-    icon: "🦜",
-    href: "/categories/birds",
-  },
-  {
-    name: "Small Pets",
-    description: "Hay, bedding, habitats",
-    icon: "🐹",
-    href: "/categories/small-pets",
-  },
-  {
-    name: "Pharmacy",
-    description: "Health, prevention, vitamins",
-    icon: "💊",
-    href: "/categories/pharmacy",
-  },
-];
+import { getAssetOrigin } from "@/lib/bannerApi";
 
 const iconBySlug = {
   dog: "🐶",
@@ -87,10 +49,6 @@ export default function ShopByPetType() {
   }, []);
 
   const cards = useMemo(() => {
-    if (!animals.length) {
-      return fallbackCategories;
-    }
-
     return animals.map((animal) => {
       const relatedCategories = categories.filter(
         (category) =>
@@ -100,13 +58,17 @@ export default function ShopByPetType() {
       return {
         name: animal.name,
         description:
-          relatedCategories.slice(0, 3).map((item) => item.name).join(", ") ||
-          "Explore products, treats and essentials",
+          relatedCategories.slice(0, 3).map((item) => item.name).join(", ") || "",
         icon: iconBySlug[animal.slug] || "🐾",
+        image: animal.image || null,
         href: `/categories/${animal.slug}`,
       };
     });
   }, [animals, categories]);
+
+  if (!cards.length) {
+    return null;
+  }
 
   return (
     <section className="bg-[#fbf7f1]">
@@ -124,7 +86,7 @@ export default function ShopByPetType() {
             aria-label="Shop by category"
           >
             <CarouselContent className="-ml-5">
-              {cards.map(({ name, description, icon, href }) => (
+              {cards.map(({ name, description, icon, image, href }) => (
                 <CarouselItem
                   key={name}
                   className="basis-[82%] pl-5 sm:basis-1/2 lg:basis-1/3 xl:basis-1/6"
@@ -133,13 +95,25 @@ export default function ShopByPetType() {
                     href={href}
                     className="group flex min-h-52 flex-col items-center justify-center rounded-lg border border-neutral-200 bg-white px-5 text-center shadow-[0_16px_45px_rgba(23,63,49,0.08)] transition-all duration-300 hover:-translate-y-1 hover:border-main/30 hover:shadow-[0_20px_55px_rgba(23,63,49,0.14)]"
                   >
-                    <span className="text-4xl leading-none transition-transform duration-300 group-hover:scale-110">
-                      {icon}
+                    <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-mainSoft transition-transform duration-300 group-hover:scale-110">
+                      {image ? (
+                        <Image
+                          src={image.startsWith("http") ? image : `${getAssetOrigin()}${image.startsWith("/") ? image : `/${image}`}`}
+                          alt={name}
+                          width={56}
+                          height={56}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-4xl leading-none">{icon}</span>
+                      )}
                     </span>
                     <h3 className="mt-6 text-xl font-black text-main">{name}</h3>
-                    <p className="mt-3 text-sm font-medium leading-6 text-main/65">
-                      {description}
-                    </p>
+                    {description ? (
+                      <p className="mt-3 text-sm font-medium leading-6 text-main/65">
+                        {description}
+                      </p>
+                    ) : null}
                   </Link>
                 </CarouselItem>
               ))}

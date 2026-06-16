@@ -2,27 +2,6 @@ import { getApiBaseUrl } from "@/lib/apiBaseUrl";
 
 const FETCH_TIMEOUT_MS = 5000;
 
-const fallbackBrands = [
-  {
-    name: "Orijen",
-    slug: "orijen",
-    description: "Dog and cat nutrition",
-    animalNames: ["Dog", "Cat"],
-  },
-  {
-    name: "Royal Canin",
-    slug: "royal-canin",
-    description: "Breed-focused formulas",
-    animalNames: ["Dog", "Cat"],
-  },
-  {
-    name: "KONG",
-    slug: "kong",
-    description: "Chew and play essentials",
-    animalNames: ["Dog"],
-  },
-];
-
 const titleCase = (value = "") =>
   value
     .toString()
@@ -56,10 +35,6 @@ export async function getBrandsFromApi() {
 
 export async function getBrandNavbarView() {
   const brands = await getBrandsFromApi();
-
-  if (!brands.length) {
-    return fallbackBrands;
-  }
 
   const ordered = [...brands].sort(
     (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)

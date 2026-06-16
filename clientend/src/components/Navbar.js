@@ -1,17 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import Container from "@/components/Container";
-import { animals as fallbackAnimals } from "@/data/categoryPageData";
-
-const fallbackBrands = [
-  { name: "Orijen", slug: "orijen" },
-  { name: "Royal Canin", slug: "royal-canin" },
-  { name: "KONG", slug: "kong" },
-];
+import { getAssetOrigin } from "@/lib/bannerApi";
 
 const navLinks = [
   { label: "Home", href: "/" },
@@ -72,8 +67,8 @@ function NavDropdown({ label, open, onToggle, onClose, children }) {
 }
 
 export default function Navbar({
-  animals = fallbackAnimals,
-  brands = fallbackBrands,
+  animals = [],
+  brands = [],
 }) {
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
   const [isBrandsOpen, setIsBrandsOpen] = useState(false);
@@ -116,7 +111,23 @@ export default function Navbar({
                         onClick={closeMenus}
                         className="flex items-center gap-3 rounded-md px-3 py-3 text-sm font-black transition-colors hover:bg-[#eef8f2]"
                       >
-                        <span className="text-lg">{animal.icon}</span>
+                        <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-mainSoft">
+                          {animal.image ? (
+                            <Image
+                              src={
+                                animal.image.startsWith("http")
+                                  ? animal.image
+                                  : `${getAssetOrigin()}${animal.image.startsWith("/") ? animal.image : `/${animal.image}`}`
+                              }
+                              alt={animal.name}
+                              width={28}
+                              height={28}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-lg">{animal.icon}</span>
+                          )}
+                        </span>
                         {animal.name}
                       </Link>
                     ))}

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { slugifyCategory } from "@/data/categoryPageData";
+import { slugifyCategory } from "@/lib/catalogUtils";
 
 export default function CategorySidebar({ animal, activeSubcategory, brands = [] }) {
   const normalizedBrands = brands

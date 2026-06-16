@@ -13,6 +13,16 @@ const animalSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    icon: {
+      type: String,
+      default: "🐾",
+      trim: true,
+    },
+    image: {
+      type: String,
+      default: null,
+      trim: true,
+    },
     isActive: {
       type: Boolean,
       default: true,

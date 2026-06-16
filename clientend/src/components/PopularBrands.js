@@ -13,59 +13,38 @@ import {
 } from "@/components/ui/carousel";
 import { apiRequest } from "@/lib/api";
 
-const fallbackBrands = [
-  {
-    name: "Orijen",
-    slug: "orijen",
-    description: "Dog & cat nutrition",
-  },
-  {
-    name: "Royal Canin",
-    slug: "royal-canin",
-    description: "Breed-focused formulas",
-  },
-  {
-    name: "KONG",
-    slug: "kong",
-    description: "Chew and play",
-  },
-  {
-    name: "Fluval",
-    slug: "fluval",
-    description: "Aquarium gear",
-  },
-  {
-    name: "Oxbow",
-    slug: "oxbow",
-    description: "Small pet care",
-  },
-  {
-    name: "NexGard",
-    slug: "nexgard",
-    description: "Preventive care",
-  },
-];
-
 export default function PopularBrands() {
-  const [brands, setBrands] = useState(fallbackBrands);
+  const [brands, setBrands] = useState([]);
 
   useEffect(() => {
+    let alive = true;
+
     apiRequest("/brands/get-brands")
       .then((data) => {
+        if (!alive) return;
+
         const nextBrands = (data.brands || []).slice(0, 6).map((brand) => ({
           name: brand.name,
           slug: brand.slug || String(brand.name || "").trim().toLowerCase().replace(/\s+/g, "-"),
           description: Array.isArray(brand.animalNames) && brand.animalNames.length
             ? brand.animalNames.join(", ")
-            : "Popular brand",
+            : "",
         }));
 
-        if (nextBrands.length) {
-          setBrands(nextBrands);
-        }
+        setBrands(nextBrands);
       })
-      .catch(() => setBrands(fallbackBrands));
+      .catch(() => {
+        if (alive) setBrands([]);
+      });
+
+    return () => {
+      alive = false;
+    };
   }, []);
+
+  if (!brands.length) {
+    return null;
+  }
 
   return (
     <section className="bg-[#eef8f2]">
@@ -93,9 +72,11 @@ export default function PopularBrands() {
                     className="group flex min-h-36 flex-col items-center justify-center rounded-lg border border-neutral-200 bg-white px-5 text-center shadow-[0_16px_45px_rgba(23,63,49,0.08)] transition-all duration-300 hover:-translate-y-1 hover:border-main/30 hover:shadow-[0_20px_55px_rgba(23,63,49,0.14)]"
                   >
                     <h3 className="text-xl font-black text-main">{name}</h3>
-                    <p className="mt-3 text-sm font-medium leading-6 text-main/65">
-                      {description}
-                    </p>
+                    {description ? (
+                      <p className="mt-3 text-sm font-medium leading-6 text-main/65">
+                        {description}
+                      </p>
+                    ) : null}
                   </Link>
                 </CarouselItem>
               ))}

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import DashboardShell from "@/components/DashboardShell";
@@ -13,8 +14,13 @@ const REQUEST_TIMEOUT_MS = 12000;
 const fetchWithTimeout = async (url, options = {}) => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   try {
-    return await fetch(url, { credentials: "include", ...options, signal: controller.signal });
+    return await fetch(url, {
+      credentials: "include",
+      ...options,
+      signal: controller.signal,
+    });
   } finally {
     clearTimeout(timeoutId);
   }
@@ -27,6 +33,16 @@ const getApiErrorMessage = (error, fallback) => {
   return error?.message || fallback;
 };
 
+const getAssetOrigin = (apiBaseUrl) => apiBaseUrl.replace(/\/api\/v1\/?$/, "");
+
+const resolveImageUrl = (apiBaseUrl, imagePath) => {
+  if (!imagePath) return "";
+  if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+    return imagePath;
+  }
+  return `${getAssetOrigin(apiBaseUrl)}${imagePath.startsWith("/") ? imagePath : `/${imagePath}`}`;
+};
+
 export default function CreateAnimalDashboard() {
   const { showToast } = useToast();
   const router = useRouter();
@@ -35,37 +51,58 @@ export default function CreateAnimalDashboard() {
   const mode = searchParams.get("mode");
   const animalId = searchParams.get("id");
   const isUpdate = mode === "update" && !!animalId;
+
   const [name, setName] = useState("");
+  const [existingImage, setExistingImage] = useState("");
+  const [imageFile, setImageFile] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  const loadAnimalForEdit = async () => {
-    if (!isUpdate) return;
-    try {
-      const response = await fetchWithTimeout(
-        `${apiBaseUrl}/animals/get-animals?includeInactive=true`,
-        {
-          cache: "no-store",
-        }
-      );
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || "Failed to load animal details");
-      }
-      const found = (data.animals || []).find((item) => item._id === animalId);
-      if (!found) {
-        throw new Error("Animal not found");
-      }
-      setName(found.name || "");
-    } catch (error) {
-      showToast({ tone: "danger", title: getApiErrorMessage(error, "Load failed.") });
-    }
-  };
+  const imagePreview = useMemo(() => {
+    if (!imageFile) return "";
+    return URL.createObjectURL(imageFile);
+  }, [imageFile]);
 
   useEffect(() => {
-    loadAnimalForEdit();
-  }, [isUpdate, animalId]);
+    return () => {
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    };
+  }, [imagePreview]);
 
-  const handleCreate = async () => {
+  useEffect(() => {
+    const loadAnimalForEdit = async () => {
+      if (!isUpdate) return;
+
+      try {
+        const response = await fetchWithTimeout(
+          `${apiBaseUrl}/animals/get-animals?includeInactive=true`,
+          { cache: "no-store" }
+        );
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || "Failed to load animal details");
+        }
+
+        const found = (data.animals || []).find((item) => item._id === animalId);
+        if (!found) {
+          throw new Error("Animal not found");
+        }
+
+        setName(found.name || "");
+        setExistingImage(found.image || "");
+      } catch (error) {
+        showToast({ tone: "danger", title: getApiErrorMessage(error, "Load failed.") });
+      }
+    };
+
+    loadAnimalForEdit();
+  }, [apiBaseUrl, animalId, isUpdate, showToast]);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
     if (!name.trim()) {
       showToast({ tone: "danger", title: "Animal name is required." });
       return;
@@ -73,20 +110,27 @@ export default function CreateAnimalDashboard() {
 
     setLoading(true);
     try {
+      const formData = new FormData();
+      formData.append("name", name.trim());
+      if (imageFile) {
+        formData.append("image", imageFile);
+      }
+
       const response = await fetchWithTimeout(
         isUpdate
           ? `${apiBaseUrl}/animals/update-animals/${animalId}`
           : `${apiBaseUrl}/animals/post-animals`,
         {
           method: isUpdate ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: name.trim() }),
+          body: formData,
         }
       );
+
       const data = await response.json();
       if (!response.ok || !data.success) {
         throw new Error(data.message || `Failed to ${isUpdate ? "update" : "create"} animal`);
       }
+
       showToast({
         tone: "success",
         title: `Animal ${isUpdate ? "updated" : "created"} successfully.`,
@@ -103,6 +147,7 @@ export default function CreateAnimalDashboard() {
   };
 
   const title = isUpdate ? "Update Animal" : "Create Animal";
+  const shownImage = imagePreview || resolveImageUrl(apiBaseUrl, existingImage);
 
   return (
     <DashboardShell activeItem="Categories">
@@ -142,27 +187,64 @@ export default function CreateAnimalDashboard() {
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 placeholder="Dog"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
                 className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
               />
             </div>
 
             <div>
               <label className="block text-xs font-black uppercase tracking-wide text-main/80">
-                Animal icon
+                Animal image
               </label>
-              <div className="mt-1.5 flex items-center gap-3">
-                <button
-                  type="button"
-                  className="h-9 rounded-xl bg-main px-3 text-xs font-black text-white transition hover:bg-mainHover"
-                >
-                  Choose file
-                </button>
-                <span className="text-sm font-semibold text-slate-400">
-                  No file chosen
-                </span>
-              </div>
+              <label className="mt-1.5 flex min-h-28 cursor-pointer items-center justify-center rounded-xl border border-dashed border-main/25 bg-mainSoft/30 px-4 text-center text-sm font-semibold text-slate-600 transition hover:border-main/45 hover:bg-mainSoft/50">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => setImageFile(event.target.files?.[0] || null)}
+                  className="sr-only"
+                />
+                {shownImage ? (
+                  <span className="flex items-center gap-3">
+                    <span className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
+                      <Image
+                        src={shownImage}
+                        alt="Animal preview"
+                        width={64}
+                        height={64}
+                        className="h-full w-full object-cover"
+                      />
+                    </span>
+                    <span className="text-left">
+                      <span className="block font-black text-main">
+                        {imageFile ? imageFile.name : "Current image"}
+                      </span>
+                      <span className="block text-xs text-slate-500">
+                        Click to replace the animal image
+                      </span>
+                    </span>
+                  </span>
+                ) : (
+                  <span>
+                    <span className="block font-black text-main">Upload animal image</span>
+                    <span className="block text-xs text-slate-500">PNG, JPG, WEBP</span>
+                  </span>
+                )}
+              </label>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <button
+                type="submit"
+                disabled={loading}
+                className="h-10 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover disabled:cursor-not-allowed disabled:opacity-70"
+              >
+                {loading ? (isUpdate ? "Updating..." : "Creating...") : title}
+              </button>
+              <Link
+                href="/dashboard/categories"
+                className="text-sm font-black text-slate-500 transition hover:text-main"
+              >
+                Cancel
+              </Link>
             </div>
           </form>
         </div>
@@ -177,25 +259,6 @@ export default function CreateAnimalDashboard() {
               <li>Slug is generated automatically from the name.</li>
               <li>Disabling an animal hides related categories in the app.</li>
             </ul>
-          </div>
-
-          <div className="rounded-[24px] border border-neutral-200 bg-white p-4 shadow-lg shadow-main/5">
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                disabled={loading}
-                onClick={handleCreate}
-                className="h-10 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover"
-              >
-                {loading ? (isUpdate ? "Updating..." : "Creating...") : title}
-              </button>
-              <Link
-                href="/dashboard/categories"
-                className="text-sm font-black text-slate-500 transition hover:text-main"
-              >
-                Cancel
-              </Link>
-            </div>
           </div>
         </div>
       </div>

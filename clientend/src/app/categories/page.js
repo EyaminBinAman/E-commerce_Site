@@ -3,6 +3,9 @@ import { getCategoryAnimalsView } from "@/lib/categoryApi";
 
 export default async function CategoriesPage() {
   const animals = await getCategoryAnimalsView();
-  const fallbackSlug = animals[0]?.slug || "dogs";
-  redirect(`/categories/${fallbackSlug}`);
+  if (!animals.length) {
+    redirect("/");
+  }
+
+  redirect(`/categories/${animals[0].slug}`);
 }

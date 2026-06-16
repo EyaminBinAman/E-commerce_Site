@@ -1,5 +1,5 @@
 import { getApiBaseUrl } from "@/lib/apiBaseUrl";
-import { getSubcategoryBySlug } from "@/data/categoryPageData";
+import { getSubcategoryBySlug } from "@/lib/catalogUtils";
 
 const FETCH_TIMEOUT_MS = 8000;
 
@@ -43,6 +43,9 @@ export function mapProductForListingCard(product) {
     imageUrl: getProductImageUrl(product.images?.[0]),
     emoji: "📦",
     isOutOfStock: !!product.isOutOfStock,
+    animal: product.animal?.slug || product.animal || "",
+    category: product.category || null,
+    subcategory: product.category?.name || product.subcategory || "",
   };
 }
 
@@ -120,9 +123,7 @@ export async function getProductsForAnimalView(animal, subcategorySlug) {
   const activeSubcategory = getSubcategoryBySlug(animal, subcategorySlug);
   const isAllCategory = activeSubcategory === animal.categories[0];
   const categoryDetails = animal.categoryDetails || [];
-  const activeCategory = categoryDetails.find(
-    (item) => item.name === activeSubcategory
-  );
+  const activeCategory = categoryDetails.find((item) => item.name === activeSubcategory);
 
   if (isAllCategory) {
     const slugs = categoryDetails
