@@ -2,28 +2,90 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import DashboardShell, { Badge } from "@/components/DashboardShell";
+import DashboardShell, { Badge, Icon } from "@/components/DashboardShell";
 import { useToast } from "@/components/ui/toast";
 import { adminApi } from "@/lib/adminApi";
+import {
+  getDeliveryZonesFromApi,
+  updateDeliveryZonesOnApi,
+} from "@/lib/deliveryApi";
 
 export default function DeliveryPage() {
   const { showToast } = useToast();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [zones, setZones] = useState({
+    insideDhakaCharge: 60,
+    outsideDhakaCharge: 120,
+    freeDeliveryThreshold: 500,
+  });
+  const [zoneForm, setZoneForm] = useState({
+    insideDhakaCharge: "60",
+    outsideDhakaCharge: "120",
+    freeDeliveryThreshold: "500",
+  });
+  const [isZoneModalOpen, setIsZoneModalOpen] = useState(false);
+  const [isSavingZones, setIsSavingZones] = useState(false);
 
   useEffect(() => {
-    adminApi("/orders/get-orders")
-      .then((data) => {
-        setOrders(data.data?.orders || []);
+    Promise.all([
+      adminApi("/orders/get-orders"),
+      getDeliveryZonesFromApi().catch(() => null),
+    ])
+      .then(([ordersData, zoneData]) => {
+        setOrders(ordersData.data?.orders || []);
+        if (zoneData) {
+          setZones(zoneData);
+        }
       })
       .catch((error) => {
         showToast({
           tone: "danger",
-          title: error.message || "Failed to load orders.",
+          title: error.message || "Failed to load delivery data.",
         });
       })
       .finally(() => setLoading(false));
   }, [showToast]);
+
+  const openZoneModal = () => {
+    setZoneForm({
+      insideDhakaCharge: String(zones.insideDhakaCharge ?? 60),
+      outsideDhakaCharge: String(zones.outsideDhakaCharge ?? 120),
+      freeDeliveryThreshold: String(zones.freeDeliveryThreshold ?? 500),
+    });
+    setIsZoneModalOpen(true);
+  };
+
+  const handleZoneFormChange = (event) => {
+    const { name, value } = event.target;
+    setZoneForm((current) => ({ ...current, [name]: value }));
+  };
+
+  const handleSaveZones = async (event) => {
+    event.preventDefault();
+    setIsSavingZones(true);
+
+    try {
+      const updated = await updateDeliveryZonesOnApi({
+        insideDhakaCharge: Number(zoneForm.insideDhakaCharge),
+        outsideDhakaCharge: Number(zoneForm.outsideDhakaCharge),
+        freeDeliveryThreshold: Number(zoneForm.freeDeliveryThreshold),
+      });
+      setZones(updated);
+      setIsZoneModalOpen(false);
+      showToast({
+        tone: "success",
+        title: "Delivery zone charges updated.",
+      });
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: error.message || "Could not update delivery zones.",
+      });
+    } finally {
+      setIsSavingZones(false);
+    }
+  };
 
   const summary = useMemo(() => {
     const pending = orders.filter((order) => order.orderStatus === "Pending").length;
@@ -59,15 +121,41 @@ export default function DeliveryPage() {
   return (
     <DashboardShell activeItem="Delivery">
       <div className="rounded-[24px] border border-neutral-200 bg-white px-5 py-5 shadow-lg shadow-main/5 md:px-6">
-        <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">
-          Orders
-        </p>
-        <h1 className="mt-2 text-2xl font-black tracking-tight text-main md:text-3xl">
-          Delivery
-        </h1>
-        <p className="mt-1.5 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
-          Live delivery queue derived from backend order statuses.
-        </p>
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <p className="text-sm font-black uppercase tracking-[0.35em] text-main/70">
+              Orders
+            </p>
+            <h1 className="mt-2 text-2xl font-black tracking-tight text-main md:text-3xl">
+              Delivery
+            </h1>
+            <p className="mt-1.5 max-w-3xl text-sm font-semibold leading-6 text-slate-500">
+              Live delivery queue derived from backend order statuses.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={openZoneModal}
+            className="inline-flex h-11 items-center justify-center rounded-full bg-main px-5 text-sm font-black text-white transition hover:bg-main/90"
+          >
+            Set Delivery Zone
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <InfoCard
+          label="Inside Dhaka"
+          value={`৳ ${Number(zones.insideDhakaCharge || 0).toLocaleString()}`}
+        />
+        <InfoCard
+          label="Outside Dhaka"
+          value={`৳ ${Number(zones.outsideDhakaCharge || 0).toLocaleString()}`}
+        />
+        <InfoCard
+          label="Free delivery over"
+          value={`৳ ${Number(zones.freeDeliveryThreshold || 0).toLocaleString()}`}
+        />
       </div>
 
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
@@ -126,13 +214,21 @@ export default function DeliveryPage() {
                       </p>
                     </td>
                     <td className="px-4 py-4">
-                      <p className="text-sm font-black text-slate-700">{order.userInfo?.name || "Unknown"}</p>
+                      <p className="text-sm font-black text-slate-700">
+                        {order.shippingAddress?.name || order.userInfo?.name || "Unknown"}
+                      </p>
                       <p className="mt-1 text-xs font-semibold text-slate-400">
-                        {order.userInfo?.phone || ""}
+                        {order.shippingAddress?.phone || order.userInfo?.phone || ""}
                       </p>
                     </td>
                     <td className="px-4 py-4 text-sm font-semibold text-slate-600">
-                      {order.shippingAddress?.address || order.shippingAddress?.city || "No address"}
+                      {[
+                        order.shippingAddress?.address,
+                        order.shippingAddress?.area,
+                        order.shippingAddress?.city,
+                      ]
+                        .filter(Boolean)
+                        .join(", ") || "No address"}
                     </td>
                     <td className="px-4 py-4 text-center">
                       <Badge tone={order.orderStatus === "Shipping" ? "blue" : "yellow"}>
@@ -155,6 +251,67 @@ export default function DeliveryPage() {
           </table>
         </div>
       </div>
+
+      {isZoneModalOpen ? (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-sm">
+          <section className="w-full max-w-lg overflow-hidden rounded-[26px] border border-neutral-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-neutral-100 px-6 py-5">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.28em] text-main/70">
+                  Delivery zones
+                </p>
+                <h2 className="mt-2 text-2xl font-black text-main">Set delivery charges</h2>
+              </div>
+              <button
+                type="button"
+                aria-label="Close delivery zone settings"
+                onClick={() => setIsZoneModalOpen(false)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-neutral-200 text-slate-500 transition hover:bg-mainSoft hover:text-main"
+              >
+                <Icon name="x" className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveZones} className="space-y-4 p-6">
+              <ZoneField
+                label="Inside Dhaka charge"
+                name="insideDhakaCharge"
+                value={zoneForm.insideDhakaCharge}
+                onChange={handleZoneFormChange}
+              />
+              <ZoneField
+                label="Outside Dhaka charge"
+                name="outsideDhakaCharge"
+                value={zoneForm.outsideDhakaCharge}
+                onChange={handleZoneFormChange}
+              />
+              <ZoneField
+                label="Free delivery threshold"
+                name="freeDeliveryThreshold"
+                value={zoneForm.freeDeliveryThreshold}
+                onChange={handleZoneFormChange}
+              />
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsZoneModalOpen(false)}
+                  className="inline-flex h-11 flex-1 items-center justify-center rounded-full border border-neutral-200 px-5 text-sm font-black text-main transition hover:bg-mainSoft"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingZones}
+                  className="inline-flex h-11 flex-1 items-center justify-center rounded-full bg-main px-5 text-sm font-black text-white transition hover:bg-main/90 disabled:cursor-not-allowed disabled:bg-neutral-300"
+                >
+                  {isSavingZones ? "Saving..." : "Save charges"}
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
+      ) : null}
     </DashboardShell>
   );
 }
@@ -177,5 +334,25 @@ function InfoCard({ label, value }) {
       </p>
       <p className="mt-2 text-sm font-black text-main">{value}</p>
     </article>
+  );
+}
+
+function ZoneField({ label, name, value, onChange }) {
+  return (
+    <label className="block">
+      <span className="text-xs font-black uppercase tracking-[0.22em] text-main/75">
+        {label}
+      </span>
+      <input
+        name={name}
+        type="number"
+        min="0"
+        step="1"
+        required
+        value={value}
+        onChange={onChange}
+        className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-main"
+      />
+    </label>
   );
 }

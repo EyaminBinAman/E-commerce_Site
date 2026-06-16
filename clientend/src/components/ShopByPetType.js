@@ -13,7 +13,7 @@ import {
   CarouselPrevious,
 } from "@/components/ui/carousel";
 import { apiRequest } from "@/lib/api";
-import { getAssetOrigin } from "@/lib/bannerApi";
+import { resolveCatalogImageUrl } from "@/lib/categoryApi";
 
 const iconBySlug = {
   dog: "🐶",
@@ -59,7 +59,7 @@ export default function ShopByPetType() {
         name: animal.name,
         description:
           relatedCategories.slice(0, 3).map((item) => item.name).join(", ") || "",
-        icon: iconBySlug[animal.slug] || "🐾",
+        icon: animal.icon || iconBySlug[animal.slug] || "🐾",
         image: animal.image || null,
         href: `/categories/${animal.slug}`,
       };
@@ -96,12 +96,13 @@ export default function ShopByPetType() {
                     className="group flex min-h-52 flex-col items-center justify-center rounded-lg border border-neutral-200 bg-white px-5 text-center shadow-[0_16px_45px_rgba(23,63,49,0.08)] transition-all duration-300 hover:-translate-y-1 hover:border-main/30 hover:shadow-[0_20px_55px_rgba(23,63,49,0.14)]"
                   >
                     <span className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-mainSoft transition-transform duration-300 group-hover:scale-110">
-                      {image ? (
+                      {resolveCatalogImageUrl(image) ? (
                         <Image
-                          src={image.startsWith("http") ? image : `${getAssetOrigin()}${image.startsWith("/") ? image : `/${image}`}`}
+                          src={resolveCatalogImageUrl(image)}
                           alt={name}
                           width={56}
                           height={56}
+                          unoptimized
                           className="h-full w-full object-cover"
                         />
                       ) : (

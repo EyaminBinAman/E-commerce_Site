@@ -19,6 +19,10 @@ const initialForm = {
   minOrder: "0",
   maxAmount: "",
   scopeType: "all",
+  productIds: [],
+  categoryIds: [],
+  userIds: [],
+  itemIds: [],
   totalUsageLimit: "",
   usageLimitPerUser: "1",
   startDate: getDefaultDate(),
@@ -34,14 +38,50 @@ const scopeLabels = {
   "new-users": "New users",
 };
 
+const scopeIdFields = {
+  products: "productIds",
+  items: "itemIds",
+  categories: "categoryIds",
+  users: "userIds",
+};
+
+function toNumber(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeScopeIds(ids = []) {
+  return ids.map((id) => String(id?._id || id));
+}
+
+function formatScopeSummary(promo) {
+  const scopeType = promo.scopeType || promo.scope?.type || "all";
+  const label = scopeLabels[scopeType] || "All items";
+  const idField = scopeIdFields[scopeType];
+  const count = idField
+    ? (promo[idField] || promo.scope?.[idField] || []).length
+    : 0;
+
+  if (!count) {
+    return label;
+  }
+
+  return `${label} (${count})`;
+}
+
 const normalizePromoCode = (item) => ({
-  id: item._id,
+  id: item._id || item.id,
   name: item.name,
   discountType: item.discountType,
   discountValue: item.discountValue,
   minOrder: item.minOrder,
   maxAmount: item.maxAmount,
+  scope: item.scope || { type: "all" },
   scopeType: item.scope?.type || "all",
+  productIds: normalizeScopeIds(item.scope?.productIds),
+  categoryIds: normalizeScopeIds(item.scope?.categoryIds),
+  userIds: normalizeScopeIds(item.scope?.userIds),
+  itemIds: normalizeScopeIds(item.scope?.itemIds),
   totalUsageLimit: item.totalUsageLimit,
   usageCount: item.usageCount || 0,
   usageLimitPerUser: item.usageLimitPerUser || 1,
@@ -100,13 +140,26 @@ function formatDate(value) {
 }
 
 function mapPromo(promoCode) {
-  return {
+  return normalizePromoCode({
     ...promoCode,
-    id: promoCode._id || promoCode.id,
-    scopeType: promoCode.scope?.type || "all",
-    startDate: formatDate(promoCode.startDate),
-    expiryDate: formatDate(promoCode.expiryDate),
-  };
+    _id: promoCode._id || promoCode.id,
+  });
+}
+
+function buildScopePayload(form) {
+  const scope = { type: form.scopeType };
+
+  if (form.scopeType === "products") {
+    scope.productIds = form.productIds;
+  } else if (form.scopeType === "items") {
+    scope.itemIds = form.itemIds;
+  } else if (form.scopeType === "categories") {
+    scope.categoryIds = form.categoryIds;
+  } else if (form.scopeType === "users") {
+    scope.userIds = form.userIds;
+  }
+
+  return scope;
 }
 
 function buildPayload(form) {
@@ -116,7 +169,7 @@ function buildPayload(form) {
     discountValue: toNumber(form.discountValue, 0),
     minOrder: toNumber(form.minOrder, 0),
     maxAmount: form.maxAmount === "" ? null : toNumber(form.maxAmount, null),
-    scope: { type: form.scopeType },
+    scope: buildScopePayload(form),
     totalUsageLimit:
       form.totalUsageLimit === "" ? null : toNumber(form.totalUsageLimit, null),
     usageLimitPerUser: toNumber(form.usageLimitPerUser, 1),
@@ -134,6 +187,10 @@ function getFormFromPromo(promo) {
     minOrder: String(promo.minOrder ?? "0"),
     maxAmount: promo.maxAmount === null || promo.maxAmount === undefined ? "" : String(promo.maxAmount),
     scopeType: promo.scopeType || promo.scope?.type || "all",
+    productIds: normalizeScopeIds(promo.productIds || promo.scope?.productIds),
+    categoryIds: normalizeScopeIds(promo.categoryIds || promo.scope?.categoryIds),
+    userIds: normalizeScopeIds(promo.userIds || promo.scope?.userIds),
+    itemIds: normalizeScopeIds(promo.itemIds || promo.scope?.itemIds),
     totalUsageLimit:
       promo.totalUsageLimit === null || promo.totalUsageLimit === undefined
         ? ""
@@ -142,6 +199,97 @@ function getFormFromPromo(promo) {
     startDate: formatDate(promo.startDate),
     expiryDate: formatDate(promo.expiryDate),
   };
+}
+
+function ScopeTargetPicker({
+  label,
+  description,
+  options,
+  selectedIds,
+  onChange,
+  loading,
+  emptyMessage,
+}) {
+  const [search, setSearch] = useState("");
+
+  const filteredOptions = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) {
+      return options;
+    }
+
+    return options.filter((option) => option.label.toLowerCase().includes(query));
+  }, [options, search]);
+
+  const toggleOption = (id) => {
+    const nextIds = selectedIds.includes(id)
+      ? selectedIds.filter((value) => value !== id)
+      : [...selectedIds, id];
+    onChange(nextIds);
+  };
+
+  return (
+    <div className="sm:col-span-2">
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.22em] text-main/75">
+            {label}
+          </p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">{description}</p>
+        </div>
+        <p className="text-xs font-black text-main">{selectedIds.length} selected</p>
+      </div>
+
+      <input
+        type="search"
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder="Search..."
+        className="mt-3 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition placeholder:text-slate-300 focus:border-main"
+      />
+
+      <div className="mt-3 max-h-56 overflow-y-auto rounded-xl border border-neutral-200 bg-neutral-50/60">
+        {loading ? (
+          <p className="px-4 py-6 text-center text-sm font-semibold text-slate-500">
+            Loading options...
+          </p>
+        ) : filteredOptions.length ? (
+          <ul className="divide-y divide-neutral-200">
+            {filteredOptions.map((option) => {
+              const checked = selectedIds.includes(option.id);
+
+              return (
+                <li key={option.id}>
+                  <label className="flex cursor-pointer items-start gap-3 px-4 py-3 transition hover:bg-white">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleOption(option.id)}
+                      className="mt-1 h-4 w-4 rounded border-neutral-300 text-main focus:ring-main"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-black text-slate-700">
+                        {option.label}
+                      </span>
+                      {option.hint ? (
+                        <span className="mt-0.5 block text-xs font-semibold text-slate-400">
+                          {option.hint}
+                        </span>
+                      ) : null}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="px-4 py-6 text-center text-sm font-semibold text-slate-500">
+            {emptyMessage}
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function PromoTable({ title, items, onToggle, onDelete, onEdit, busyId }) {
@@ -194,7 +342,7 @@ function PromoTable({ title, items, onToggle, onDelete, onEdit, busyId }) {
                 </td>
                 <td className="px-4 py-4">
                   <p className="text-sm font-semibold text-slate-600">
-                    {scopeLabels[item.scopeType] || "All items"}
+                    {formatScopeSummary(item)}
                   </p>
                   <p className="mt-1 text-[11px] font-semibold text-slate-400">
                     {item.usageLimitPerUser} use per customer
@@ -259,6 +407,10 @@ export default function PromoCodesPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [busyId, setBusyId] = useState(null);
+  const [scopeOptionsLoading, setScopeOptionsLoading] = useState(false);
+  const [productOptions, setProductOptions] = useState([]);
+  const [categoryOptions, setCategoryOptions] = useState([]);
+  const [userOptions, setUserOptions] = useState([]);
   const createRef = useRef(null);
 
   useEffect(() => {
@@ -307,8 +459,123 @@ export default function PromoCodesPage() {
     loadPromoCodes();
   }, [loadPromoCodes]);
 
+  useEffect(() => {
+    if (!showCreate) {
+      return;
+    }
+
+    let alive = true;
+    setScopeOptionsLoading(true);
+
+    Promise.all([
+      adminApi("/categories/get-categories?includeInactive=true"),
+      adminApi("/products/get-products?limit=100"),
+      adminApi("/users/accounts"),
+    ])
+      .then(([categoriesData, productsData, accountsData]) => {
+        if (!alive) return;
+
+        setCategoryOptions(
+          (categoriesData.categories || []).map((category) => ({
+            id: String(category._id),
+            label: category.name,
+            hint: category.isActive ? "Active category" : "Inactive category",
+          }))
+        );
+
+        setProductOptions(
+          (productsData.products || []).map((product) => ({
+            id: String(product._id),
+            label: product.name,
+            hint: [product.category?.name, product.brand?.name].filter(Boolean).join(" · "),
+          }))
+        );
+
+        setUserOptions(
+          (accountsData.accounts || [])
+            .filter((account) => account.role !== "admin")
+            .map((account) => ({
+              id: String(account.id || account._id),
+              label: account.name || account.email,
+              hint: account.email,
+            }))
+        );
+      })
+      .catch((error) => {
+        showToast({
+          tone: "danger",
+          title: "Could not load promo scope options.",
+          description: error.message,
+        });
+      })
+      .finally(() => {
+        if (alive) {
+          setScopeOptionsLoading(false);
+        }
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [showCreate, showToast]);
+
+  const scopePickerConfig = useMemo(() => {
+    if (form.scopeType === "products" || form.scopeType === "items") {
+      return {
+        label: form.scopeType === "products" ? "Select products" : "Select items",
+        description: "Customer cart must include at least one of these products.",
+        options: productOptions,
+        selectedIds: form.scopeType === "products" ? form.productIds : form.itemIds,
+        onChange: (nextIds) =>
+          setForm((prev) =>
+            prev.scopeType === "products"
+              ? { ...prev, productIds: nextIds }
+              : { ...prev, itemIds: nextIds }
+          ),
+        emptyMessage: "No products found.",
+      };
+    }
+
+    if (form.scopeType === "categories") {
+      return {
+        label: "Select categories",
+        description: "Customer cart must include at least one product from these categories.",
+        options: categoryOptions,
+        selectedIds: form.categoryIds,
+        onChange: (nextIds) => setForm((prev) => ({ ...prev, categoryIds: nextIds })),
+        emptyMessage: "No categories found.",
+      };
+    }
+
+    if (form.scopeType === "users") {
+      return {
+        label: "Select customers",
+        description: "Only these customer accounts can use this promo code.",
+        options: userOptions,
+        selectedIds: form.userIds,
+        onChange: (nextIds) => setForm((prev) => ({ ...prev, userIds: nextIds })),
+        emptyMessage: "No customer accounts found.",
+      };
+    }
+
+    return null;
+  }, [categoryOptions, form, productOptions, userOptions]);
+
   const handleChange = (event) => {
     const { name, value } = event.target;
+
+    if (name === "scopeType") {
+      setForm((prev) => ({
+        ...prev,
+        scopeType: value,
+        productIds: [],
+        categoryIds: [],
+        userIds: [],
+        itemIds: [],
+      }));
+      return;
+    }
+
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -326,6 +593,26 @@ export default function PromoCodesPage() {
 
     if (!form.name.trim()) {
       showToast({ tone: "warning", title: "Promo code name is required." });
+      return;
+    }
+
+    if (form.scopeType === "products" && !form.productIds.length) {
+      showToast({ tone: "warning", title: "Select at least one product." });
+      return;
+    }
+
+    if (form.scopeType === "items" && !form.itemIds.length) {
+      showToast({ tone: "warning", title: "Select at least one item." });
+      return;
+    }
+
+    if (form.scopeType === "categories" && !form.categoryIds.length) {
+      showToast({ tone: "warning", title: "Select at least one category." });
+      return;
+    }
+
+    if (form.scopeType === "users" && !form.userIds.length) {
+      showToast({ tone: "warning", title: "Select at least one customer." });
       return;
     }
 
@@ -569,6 +856,24 @@ export default function PromoCodesPage() {
                 onChange={handleChange}
                 type="date"
               />
+
+              {scopePickerConfig ? (
+                <ScopeTargetPicker
+                  label={scopePickerConfig.label}
+                  description={scopePickerConfig.description}
+                  options={scopePickerConfig.options}
+                  selectedIds={scopePickerConfig.selectedIds}
+                  onChange={scopePickerConfig.onChange}
+                  loading={scopeOptionsLoading}
+                  emptyMessage={scopePickerConfig.emptyMessage}
+                />
+              ) : null}
+
+              {form.scopeType === "new-users" ? (
+                <div className="sm:col-span-2 rounded-xl border border-main/15 bg-mainSoft/40 px-4 py-3 text-sm font-semibold text-slate-600">
+                  This code only works for customers placing their first order.
+                </div>
+              ) : null}
 
               <div className="sm:col-span-2 flex justify-end gap-2">
                 <button

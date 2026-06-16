@@ -1,3 +1,5 @@
+import Image from "next/image";
+
 import Container from "@/components/Container";
 import BrandSidebar from "@/components/brand/BrandSidebar";
 import ProductCard from "@/components/category/ProductCard";
@@ -43,8 +45,21 @@ export default function BrandPageContent({ brand, brands, products }) {
                     </div>
                   ) : null}
                 </div>
-                <span className="absolute right-10 top-1/2 hidden -translate-y-1/2 text-8xl sm:block">
-                  🏷️
+                <span className="absolute right-10 top-1/2 hidden -translate-y-1/2 sm:block">
+                  {brand.imageUrl ? (
+                    <span className="flex h-28 w-28 items-center justify-center overflow-hidden rounded-2xl bg-white/15 p-3">
+                      <Image
+                        src={brand.imageUrl}
+                        alt={brand.name}
+                        width={112}
+                        height={112}
+                        unoptimized
+                        className="h-full w-full object-contain"
+                      />
+                    </span>
+                  ) : (
+                    <span className="text-8xl">🏷️</span>
+                  )}
                 </span>
               </div>
             </div>

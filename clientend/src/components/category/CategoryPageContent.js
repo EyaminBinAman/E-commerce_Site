@@ -3,7 +3,7 @@ import Image from "next/image";
 import CategorySidebar from "@/components/category/CategorySidebar";
 import ProductCard from "@/components/category/ProductCard";
 import { getSubcategoryBySlug } from "@/lib/catalogUtils";
-import { getAssetOrigin } from "@/lib/bannerApi";
+import { resolveCatalogImageUrl } from "@/lib/categoryApi";
 
 export default function CategoryPageContent({
   animal,
@@ -20,6 +20,7 @@ export default function CategoryPageContent({
     ? animal.icon || "🐾"
     : activeCategory?.icon || animal.icon || "🐾";
   const heroImage = isAllCategory ? animal.image || null : activeCategory?.image || null;
+  const heroImageUrl = resolveCatalogImageUrl(heroImage);
 
   return (
     <main className="bg-[#fbf7f1]">
@@ -68,17 +69,14 @@ export default function CategoryPageContent({
                   </div>
                 </div>
                 <span className="absolute right-10 top-1/2 hidden -translate-y-1/2 text-8xl sm:block">
-                  {heroImage ? (
+                  {heroImageUrl ? (
                     <span className="flex h-36 w-36 items-center justify-center overflow-hidden rounded-full bg-white/10">
                       <Image
-                        src={
-                          heroImage.startsWith("http")
-                            ? heroImage
-                            : `${getAssetOrigin()}${heroImage.startsWith("/") ? heroImage : `/${heroImage}`}`
-                        }
+                        src={heroImageUrl}
                         alt={animal.name}
                         width={144}
                         height={144}
+                        unoptimized
                         className="h-full w-full object-cover"
                       />
                     </span>

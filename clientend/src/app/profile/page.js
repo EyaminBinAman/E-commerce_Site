@@ -30,6 +30,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useWishlist } from "@/components/WishlistProvider";
 import { useAuth } from "@/context/AuthContext";
 import { API_BASE_URL, apiRequest } from "@/lib/api";
+import { getProductImageUrl } from "@/lib/productApi";
 import { getMyOrdersFromApi } from "@/lib/orderApi";
 import {
   formatBDT,
@@ -1372,7 +1373,7 @@ function Wishlist({ items, isLoading, onRemove }) {
             <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-mainSoft">
               {item.image ? (
                 <img
-                  src={getImageUrl(item.image)}
+                  src={getProductImageUrl(item.image) || undefined}
                   alt={item.name}
                   className="h-full w-full object-cover"
                 />

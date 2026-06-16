@@ -1,9 +1,18 @@
-import { slugifyCategory } from "@/lib/catalogUtils";
+import { slugifyCategory, getAnimalGroupKeys } from "@/lib/catalogUtils";
+import { getAssetOrigin } from "@/lib/bannerApi";
 
 const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
 const FETCH_TIMEOUT_MS = 5000;
+
+export function resolveCatalogImageUrl(imagePath) {
+  if (!imagePath) return null;
+  if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+    return imagePath;
+  }
+  return `${getAssetOrigin()}${imagePath.startsWith("/") ? imagePath : `/${imagePath}`}`;
+}
 
 export async function getAnimalsFromApi() {
   try {
@@ -69,18 +78,26 @@ export async function getCategoryAnimalsView() {
   return orderedAnimals.map((animal) => {
     const rawName = animal.name || "Pet";
     const slug = animal.slug || slugifyCategory(rawName);
-    const categoryList = groupedCategories[rawName.toLowerCase()] || [];
+    const categoryList = getAnimalGroupKeys(rawName).flatMap(
+      (key) => groupedCategories[key] || []
+    );
+    const uniqueCategories = categoryList.filter(
+      (item, index, list) =>
+        list.findIndex((entry) => entry.slug === item.slug) === index
+    );
     const allLabel = `All ${rawName}`;
 
     return {
       name: rawName,
       slug,
       icon: animal.icon || "🐾",
+      image: animal.image || null,
+      imageUrl: resolveCatalogImageUrl(animal.image),
       description: animal.description || "",
-      categories: [allLabel, ...categoryList.map((item) => item.name)],
+      categories: [allLabel, ...uniqueCategories.map((item) => item.name)],
       categoryDetails: [
-        { name: allLabel, slug: null, isAll: true },
-        ...categoryList.map((item) => ({
+        { name: allLabel, slug: null, isAll: true, icon: animal.icon || "🐾", image: animal.image || null },
+        ...uniqueCategories.map((item) => ({
           name: item.name,
           slug: item.slug,
           icon: item.icon || "🐾",

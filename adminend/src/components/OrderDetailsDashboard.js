@@ -10,6 +10,8 @@ import {
   getOrderByIdFromApi,
   orderStatusOptions,
   paymentStatusOptions,
+  UNPAID_DELIVERY_MESSAGE,
+  canMarkOrderDelivered,
   updateOrderPaymentStatusOnApi,
   updateOrderStatusOnApi,
 } from "@/lib/orderApi";
@@ -71,6 +73,15 @@ export default function OrderDetailsDashboard() {
 
   async function handleOrderStatusChange(nextStatus) {
     if (!order) return;
+
+    if (nextStatus === "Delivered" && !canMarkOrderDelivered(order)) {
+      showToast({
+        tone: "danger",
+        title: UNPAID_DELIVERY_MESSAGE,
+      });
+      return;
+    }
+
     setUpdating(true);
     try {
       const updated = await updateOrderStatusOnApi(order.mongoId, nextStatus);
@@ -206,7 +217,13 @@ export default function OrderDetailsDashboard() {
         </InfoCard>
 
         <InfoCard title="Delivery Address">
-          <p className="text-lg font-black text-slate-800">{order.city}</p>
+          <p className="text-lg font-black text-slate-800">
+            {order.shippingName || order.customer}
+          </p>
+          <p className="text-sm font-bold text-slate-500">
+            {order.shippingPhone || order.phone}
+          </p>
+          <p className="text-sm font-bold text-slate-500">{order.city}</p>
           <p className="text-sm font-bold leading-6 text-slate-500">{order.address}</p>
           {order.notes ? (
             <p className="text-sm font-bold text-slate-500">{order.notes}</p>
@@ -291,7 +308,7 @@ export default function OrderDetailsDashboard() {
               </div>
             ) : null}
             <div className="flex justify-between text-sm font-bold text-slate-500">
-              <span>Delivery Charge</span>
+              <span>Delivery ({order.deliveryZone})</span>
               <span>{order.delivery}</span>
             </div>
             <div className="flex justify-between border-t border-neutral-200 pt-3 text-xl font-black text-main">

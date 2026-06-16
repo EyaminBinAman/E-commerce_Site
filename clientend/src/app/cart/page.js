@@ -134,10 +134,6 @@ export default function CartPage() {
     deliveryZone,
     deliveryCharge: 0,
     freeDeliveryThreshold: 500,
-    vatRate: 0.05,
-    vat: 0,
-    extraCharges: [],
-    extraChargeTotal: 0,
     grandTotal: cartSubtotal,
   };
 
@@ -402,25 +398,6 @@ export default function CartPage() {
                 <p className="text-xs font-semibold text-neutral-500">
                   Free delivery over {formatPrice(displaySummary.freeDeliveryThreshold)}
                 </p>
-                <div className="flex items-center justify-between">
-                  <span className="text-neutral-600">
-                    VAT ({Math.round(displaySummary.vatRate * 100)}%)
-                  </span>
-                  <span className="font-black text-neutral-950">
-                    {formatPrice(displaySummary.vat)}
-                  </span>
-                </div>
-                {displaySummary.extraCharges.map((charge) => (
-                  <div
-                    key={charge.label}
-                    className="flex items-center justify-between"
-                  >
-                    <span className="text-neutral-600">{charge.label}</span>
-                    <span className="font-black text-neutral-950">
-                      {formatPrice(charge.amount)}
-                    </span>
-                  </div>
-                ))}
               </div>
               <div className="mt-5 flex items-center justify-between text-lg">
                 <span className="font-black text-neutral-950">Total</span>

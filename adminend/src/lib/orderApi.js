@@ -21,6 +21,14 @@ export const paymentStatusOptions = [
   { label: "Paid", value: "Paid" },
 ];
 
+export const UNPAID_DELIVERY_MESSAGE =
+  "Unpaid orders cannot be marked as delivered. Mark the payment as paid first.";
+
+export const canMarkOrderDelivered = (order) => {
+  if (!order) return false;
+  return order.billStatus === "Paid" || order.paymentStatus === "Paid";
+};
+
 export const formatTk = (amount) => {
   const value = Number(amount) || 0;
   return `Tk ${value.toLocaleString("en-US")}`;
@@ -53,6 +61,7 @@ const formatAddress = (shippingAddress = {}) => {
     shippingAddress.address,
     shippingAddress.area,
     shippingAddress.city,
+    shippingAddress.postalCode,
   ].filter(Boolean);
   return parts.join(", ") || "—";
 };
@@ -83,9 +92,11 @@ export const mapBackendOrderToAdminRow = (order) => {
   return {
     id: order.orderNumber,
     mongoId: order._id,
-    customer: order.userInfo?.name || "—",
+    customer: order.shippingAddress?.name || order.userInfo?.name || "—",
     email: order.userInfo?.email || "",
-    phone: order.userInfo?.phone || "",
+    phone: order.shippingAddress?.phone || order.userInfo?.phone || "",
+    shippingName: order.shippingAddress?.name || "",
+    shippingPhone: order.shippingAddress?.phone || "",
     date: formatOrderDate(order.createdAt),
     payment: paymentMethodLabels[order.paymentMethod] || order.paymentMethod,
     paymentStatus: paymentStatus.toUpperCase(),
@@ -94,6 +105,8 @@ export const mapBackendOrderToAdminRow = (order) => {
     discount: formatTk(order.promoDiscount || 0),
     discountAmount: Number(order.promoDiscount) || 0,
     delivery: formatTk(order.deliveryCharge || 0),
+    deliveryZone:
+      order.deliveryZone === "outside-dhaka" ? "Outside Dhaka" : "Inside Dhaka",
     total: formatTk(order.grandTotal),
     orderStatus: toUiOrderStatus(order.orderStatus),
     billStatus,

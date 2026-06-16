@@ -187,7 +187,14 @@ productSchema.pre("validate", async function (next) {
 });
 
 productSchema.pre("save", function (next) {
-  if (typeof this.stockQuantity === "number") {
+  if (Array.isArray(this.variants) && this.variants.length > 0) {
+    const totalVariantStock = this.variants.reduce(
+      (total, variant) => total + Number(variant.stockQuantity || 0),
+      0
+    );
+    this.stockQuantity = totalVariantStock;
+    this.isOutOfStock = totalVariantStock <= 0;
+  } else if (typeof this.stockQuantity === "number") {
     this.isOutOfStock = this.stockQuantity <= 0;
   }
 

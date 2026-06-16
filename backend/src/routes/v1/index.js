@@ -12,6 +12,7 @@ const promoCodeRoutes = require("./promoCodeRoutes.js");
 const bannerRoutes = require("./bannerRoutes.js");
 const reviewRoutes = require("./reviewRoutes.js");
 const wishlistRoutes = require("./wishlistRoutes.js");
+const deliveryRoutes = require("./deliveryRoutes.js");
 
 router.use("/users", userRoutes);
 router.use("/brands", brandRoutes);
@@ -24,5 +25,6 @@ router.use("/promo-codes", promoCodeRoutes);
 router.use("/banners", bannerRoutes);
 router.use("/reviews", reviewRoutes);
 router.use("/wishlist", wishlistRoutes);
+router.use("/delivery", deliveryRoutes);
 
 module.exports = router;

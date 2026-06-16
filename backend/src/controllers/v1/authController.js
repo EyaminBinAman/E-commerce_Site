@@ -34,17 +34,49 @@ const removeUploadedUserImage = async (profilePic) => {
   }
 };
 
+const parseDurationToMs = (duration, fallbackMs) => {
+  if (!duration) {
+    return fallbackMs;
+  }
+
+  const match = String(duration).trim().match(/^(\d+(?:\.\d+)?)([smhd])$/i);
+
+  if (!match) {
+    return fallbackMs;
+  }
+
+  const value = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  const units = {
+    s: 1000,
+    m: 60 * 1000,
+    h: 60 * 60 * 1000,
+    d: 24 * 60 * 60 * 1000,
+  };
+
+  return Math.round(value * units[unit]);
+};
+
+const ACCESS_TOKEN_MAX_AGE_MS = parseDurationToMs(
+  process.env.ACCESS_TOKEN_EXPIRES_IN,
+  60 * 60 * 1000
+);
+const REFRESH_TOKEN_MAX_AGE_MS = parseDurationToMs(
+  process.env.REFRESH_TOKEN_EXPIRES_IN,
+  60 * 60 * 1000
+);
+
 // Token generation functions
 const createAccessToken = (userId) => {
   return jwt.sign({ id: userId }, process.env.ACCESS_TOKEN_SECRET, {
-    expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN,
+    expiresIn: process.env.ACCESS_TOKEN_EXPIRES_IN || "1h",
   });
 };
 
 // Refresh token generation function
 const createRefreshToken = (userId) => {
   return jwt.sign({ id: userId }, process.env.REFRESH_TOKEN_SECRET, {
-    expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN,
+    expiresIn: process.env.REFRESH_TOKEN_EXPIRES_IN || "1h",
   });
 };
 
@@ -105,13 +137,13 @@ const handleAuthResponse = async (res, user, statusCode, message) => {
   res.cookie(
     "accessToken",
     accessToken,
-    cookieOptions(15 * 60 * 1000)
+    cookieOptions(ACCESS_TOKEN_MAX_AGE_MS)
   );
 
   res.cookie(
     "refreshToken",
     refreshToken,
-    cookieOptions(7 * 24 * 60 * 60 * 1000)
+    cookieOptions(REFRESH_TOKEN_MAX_AGE_MS)
   );
 
   return res.status(statusCode).json({
@@ -1032,7 +1064,7 @@ const refreshToken = async (req, res, next) => {
     res.cookie(
       "accessToken",
       accessToken,
-      cookieOptions(15 * 60 * 1000)
+      cookieOptions(ACCESS_TOKEN_MAX_AGE_MS)
     );
 
     return res.status(200).json({

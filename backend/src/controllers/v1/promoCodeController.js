@@ -170,6 +170,26 @@ const validatePromoCodePayload = (data, isUpdate = false) => {
     return "Expiry date must be a valid date";
   }
 
+  if (data.scope !== undefined) {
+    const scopeType = data.scope.type || "all";
+
+    if (scopeType === "products" && data.scope.productIds.length === 0) {
+      return "Select at least one product for this promo scope";
+    }
+
+    if (scopeType === "items" && data.scope.itemIds.length === 0) {
+      return "Select at least one item for this promo scope";
+    }
+
+    if (scopeType === "categories" && data.scope.categoryIds.length === 0) {
+      return "Select at least one category for this promo scope";
+    }
+
+    if (scopeType === "users" && data.scope.userIds.length === 0) {
+      return "Select at least one user for this promo scope";
+    }
+  }
+
   return null;
 };
 

@@ -2,6 +2,10 @@ const mongoose = require("mongoose");
 
 const Order = require("../../models/Order");
 const PromoCode = require("../../models/PromoCode");
+const {
+  getDeliveryCharge,
+  getDeliveryZoneSettings,
+} = require("../../services/deliveryZoneService");
 
 const sendSuccess = (res, statusCode, message, data) => {
   return res.status(statusCode).json({
@@ -451,7 +455,8 @@ const createOrder = async (req, res, next) => {
     session.startTransaction();
 
     const Product = getProductModel();
-    const { items, promoCode, paymentMethod, shippingAddress } = req.validatedOrder;
+    const { items, promoCode, paymentMethod, shippingAddress, deliveryZone } =
+      req.validatedOrder;
     const productIds = [...new Set(items.map((item) => item.productId))];
     const products = await Product.find({
       _id: { $in: productIds.map(toObjectId) },
@@ -537,7 +542,9 @@ const createOrder = async (req, res, next) => {
       });
     }
 
-    const subtotal = orderItems.reduce((sum, item) => sum + item.itemSubtotal, 0);
+    const subtotal = roundMoney(
+      orderItems.reduce((sum, item) => sum + item.itemSubtotal, 0)
+    );
     const promoResult = await calculatePromoDiscount({
       promoCode,
       subtotal,
@@ -546,8 +553,15 @@ const createOrder = async (req, res, next) => {
       session,
     });
     const promoDiscount = promoResult.discount;
-    const deliveryCharge = 0;
-    const grandTotal = subtotal - promoDiscount + deliveryCharge;
+    const discountedSubtotal = roundMoney(Math.max(0, subtotal - promoDiscount));
+    const deliverySettings = await getDeliveryZoneSettings();
+    const delivery = getDeliveryCharge(
+      deliveryZone,
+      discountedSubtotal,
+      deliverySettings
+    );
+    const deliveryCharge = delivery.deliveryCharge;
+    const grandTotal = roundMoney(discountedSubtotal + deliveryCharge);
     const orderNumber = await generateOrderNumber(session);
 
     const [order] = await Order.create(
@@ -556,14 +570,15 @@ const createOrder = async (req, res, next) => {
           orderNumber,
           user: req.user._id,
           userInfo: {
-            name: req.user.name,
+            name: shippingAddress.name,
             email: req.user.email,
-            phone: req.user.phone,
+            phone: shippingAddress.phone,
           },
           items: orderItems,
           subtotal,
           promoCode,
           promoDiscount,
+          deliveryZone: delivery.deliveryZone,
           deliveryCharge,
           grandTotal,
           paymentMethod,
@@ -655,6 +670,16 @@ const updateOrder = async (req, res, next) => {
     }
 
     const { shippingAddress, ...updateData } = req.validatedOrder;
+    const nextOrderStatus = updateData.orderStatus ?? order.orderStatus;
+    const nextPaymentStatus = updateData.paymentStatus ?? order.paymentStatus;
+
+    if (nextOrderStatus === "Delivered" && nextPaymentStatus !== "Paid") {
+      throw createHttpError(
+        400,
+        "Unpaid orders cannot be marked as delivered. Mark the payment as paid first."
+      );
+    }
+
     const shouldRestoreStock =
       updateData.orderStatus === "Cancelled" &&
       order.orderStatus !== "Cancelled" &&

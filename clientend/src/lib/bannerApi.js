@@ -23,12 +23,34 @@ export const getBannerImageUrl = (imageUrl) => {
   return `${getAssetOrigin()}${imageUrl.startsWith("/") ? imageUrl : `/${imageUrl}`}`;
 };
 
-export const mapBannerToSlide = (banner) => ({
-  id: banner._id,
-  src: getBannerImageUrl(banner.imageUrl),
-  alt: banner.altText || banner.name,
-  href: banner.linkUrl || null,
-});
+export const mapBannerToSlide = (banner) => {
+  if (!banner?.imageUrl) {
+    return null;
+  }
+
+  return {
+    id: banner._id || banner.id,
+    src: getBannerImageUrl(banner.imageUrl),
+    alt: banner.altText || banner.name || "Banner",
+    href: banner.linkUrl || null,
+    slideNumber: Number(banner.slideNumber) || 0,
+  };
+};
+
+const sortBanners = (banners = []) =>
+  [...banners].sort(
+    (left, right) =>
+      Number(left.slideNumber) - Number(right.slideNumber) ||
+      new Date(left.createdAt || 0) - new Date(right.createdAt || 0)
+  );
+
+export async function fetchHeroBanners() {
+  return sortBanners(await fetchBanners("hero-banner"));
+}
+
+export async function fetchSliderBanners() {
+  return sortBanners(await fetchBanners("slider-banner"));
+}
 
 async function fetchWithTimeout(url) {
   const controller = new AbortController();

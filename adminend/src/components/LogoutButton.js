@@ -2,13 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { HiOutlineArrowRightOnRectangle } from "react-icons/hi2";
 
 import { useToast } from "@/components/ui/toast";
 import { useAdminAuth } from "@/components/AuthGate";
 import { logoutAdmin } from "@/lib/adminApi";
 import { clearAdminSession } from "@/lib/adminSession";
 
-export default function LogoutButton() {
+export default function LogoutButton({ variant = "default" }) {
   const router = useRouter();
   const { showToast } = useToast();
   const { setAdmin } = useAdminAuth();
@@ -36,6 +37,25 @@ export default function LogoutButton() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (variant === "icon") {
+    return (
+      <button
+        type="button"
+        onClick={handleLogout}
+        disabled={loading}
+        aria-label="Logout"
+        title="Logout"
+        className="flex w-12 items-center justify-center border-l border-neutral-200 transition-colors duration-300 hover:bg-red-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {loading ? (
+          <span className="text-xs font-bold">...</span>
+        ) : (
+          <HiOutlineArrowRightOnRectangle className="text-lg" />
+        )}
+      </button>
+    );
   }
 
   return (

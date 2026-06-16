@@ -1,12 +1,48 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import DashboardShell from "@/components/DashboardShell";
+import { getApiBaseUrl } from "@/lib/apiBaseUrl";
 import { useToast } from "@/components/ui/toast";
 import { adminApi } from "@/lib/adminApi";
+
+const REQUEST_TIMEOUT_MS = 12000;
+
+const fetchWithTimeout = async (url, options = {}) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(url, {
+      credentials: "include",
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
+const getApiErrorMessage = (error, fallback) => {
+  if (error?.name === "AbortError") {
+    return "Backend request timeout. Please verify backend is running on port 3000.";
+  }
+  return error?.message || fallback;
+};
+
+const getAssetOrigin = (apiBaseUrl) => apiBaseUrl.replace(/\/api\/v1\/?$/, "");
+
+const resolveImageUrl = (apiBaseUrl, imagePath) => {
+  if (!imagePath) return "";
+  if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+    return imagePath;
+  }
+  return `${getAssetOrigin(apiBaseUrl)}${imagePath.startsWith("/") ? imagePath : `/${imagePath}`}`;
+};
 
 const emptyForm = {
   name: "",
@@ -18,8 +54,38 @@ const emptyForm = {
   discountPrice: "",
   stockQuantity: "",
   tags: "",
-  images: "",
 };
+
+const createEmptyVariant = () => ({
+  clientId: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  label: "",
+  price: "",
+  stockQuantity: "",
+});
+
+const mapVariantsFromProduct = (product) => {
+  const basePrice = Number(product.price) || 0;
+
+  return (product.variants || []).map((variant) => ({
+    clientId: variant._id || `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    _id: variant._id,
+    label: variant.value || variant.name || "",
+    price: String(basePrice + Number(variant.priceAdjustment || 0)),
+    stockQuantity: String(variant.stockQuantity ?? 0),
+  }));
+};
+
+const buildVariantsPayload = (variants, basePrice) =>
+  variants
+    .filter((variant) => variant.label.trim())
+    .map((variant) => ({
+      ...(variant._id ? { _id: variant._id } : {}),
+      name: "Size",
+      value: variant.label.trim(),
+      priceAdjustment: Math.max(0, Number(variant.price) - basePrice),
+      stockQuantity: Number(variant.stockQuantity) || 0,
+      isActive: true,
+    }));
 
 function Field({ label, children }) {
   return (
@@ -58,7 +124,10 @@ export default function ProductEditorDashboard({ mode = "create" }) {
   const searchParams = useSearchParams();
   const slug = searchParams.get("slug");
   const { showToast } = useToast();
+  const apiBaseUrl = getApiBaseUrl();
   const [form, setForm] = useState(emptyForm);
+  const [existingImages, setExistingImages] = useState([]);
+  const [imageFiles, setImageFiles] = useState([]);
   const [loading, setLoading] = useState(isUpdate && !!slug);
   const [optionsLoading, setOptionsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -69,6 +138,20 @@ export default function ProductEditorDashboard({ mode = "create" }) {
   const [categories, setCategories] = useState([]);
   const [animals, setAnimals] = useState([]);
   const [brands, setBrands] = useState([]);
+  const [variants, setVariants] = useState([]);
+
+  const hasConfiguredVariants = variants.some((variant) => variant.label.trim());
+
+  const imagePreviews = useMemo(
+    () => imageFiles.map((file) => URL.createObjectURL(file)),
+    [imageFiles]
+  );
+
+  useEffect(() => {
+    return () => {
+      imagePreviews.forEach((preview) => URL.revokeObjectURL(preview));
+    };
+  }, [imagePreviews]);
 
   useEffect(() => {
     let alive = true;
@@ -109,7 +192,7 @@ export default function ProductEditorDashboard({ mode = "create" }) {
       return;
     }
 
-    adminApi(`/products/get-product/${slug}`)
+    adminApi(`/products/get-product/${slug}?includeInactive=true`)
       .then((data) => {
         const product = data.product;
         if (!product) {
@@ -126,8 +209,10 @@ export default function ProductEditorDashboard({ mode = "create" }) {
           discountPrice: String(product.discountPrice ?? ""),
           stockQuantity: String(product.stockQuantity ?? ""),
           tags: (product.tags || []).join(", "),
-          images: (product.images || []).join(", "),
         });
+        setExistingImages(product.images || []);
+        setImageFiles([]);
+        setVariants(mapVariantsFromProduct(product));
         setOfferEnabled(!!product.isOfferEnabled);
         setMarkStockOut(!!product.isOutOfStock);
         setIsActive(!!product.isActive);
@@ -152,7 +237,43 @@ export default function ProductEditorDashboard({ mode = "create" }) {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  const saveProduct = () => {
+  const handleImageChange = (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    setImageFiles((prev) => [...prev, ...files]);
+    event.target.value = "";
+  };
+
+  const removeExistingImage = (imagePath) => {
+    setExistingImages((prev) => prev.filter((item) => item !== imagePath));
+  };
+
+  const removeNewImage = (index) => {
+    setImageFiles((prev) => prev.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const addVariant = () => {
+    setVariants((prev) => [...prev, createEmptyVariant()]);
+  };
+
+  const updateVariant = (clientId, field, value) => {
+    setVariants((prev) =>
+      prev.map((variant) =>
+        variant.clientId === clientId ? { ...variant, [field]: value } : variant
+      )
+    );
+  };
+
+  const removeVariant = (clientId) => {
+    setVariants((prev) => prev.filter((variant) => variant.clientId !== clientId));
+  };
+
+  const previewImage =
+    imagePreviews[0] ||
+    resolveImageUrl(apiBaseUrl, existingImages[0]) ||
+    "";
+
+  const saveProduct = async () => {
     if (
       !form.name.trim() ||
       !form.description.trim() ||
@@ -166,60 +287,121 @@ export default function ProductEditorDashboard({ mode = "create" }) {
       return;
     }
 
-    if (!form.price || !form.stockQuantity) {
+    if (!form.price) {
       showToast({
         tone: "warning",
-        title: "Price and stock quantity are required.",
+        title: "Price is required.",
       });
       return;
     }
 
-    setSaving(true);
-
-    const payload = {
-      name: form.name.trim(),
-      description: form.description.trim(),
-      category: form.category.trim(),
-      animal: form.animal.trim(),
-      brand: form.brand.trim(),
-      price: Number(form.price),
-      discountPrice: form.discountPrice ? Number(form.discountPrice) : null,
-      stockQuantity: Number(form.stockQuantity),
-      tags: form.tags,
-      images: form.images,
-      isActive,
-      isFeatured,
-      isOfferEnabled: offerEnabled,
-    };
-
-    if (markStockOut) {
-      payload.stockQuantity = 0;
+    const activeVariants = variants.filter((variant) => variant.label.trim());
+    if (!hasConfiguredVariants && !form.stockQuantity) {
+      showToast({
+        tone: "warning",
+        title: "Stock quantity is required when no size options are added.",
+      });
+      return;
     }
 
-    const request = isUpdate && slug
-      ? adminApi(`/products/update-product/${slug}`, {
-          method: "PATCH",
-          body: JSON.stringify(payload),
-        })
-      : adminApi("/products/create-product", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
+    if (activeVariants.length) {
+      const invalidVariant = activeVariants.find(
+        (variant) =>
+          !variant.price ||
+          Number(variant.price) < 0 ||
+          variant.stockQuantity === "" ||
+          Number(variant.stockQuantity) < 0
+      );
 
-    request
-      .then(() => {
+      if (invalidVariant) {
         showToast({
-          tone: "success",
-          title: isUpdate ? "Product updated successfully." : "Product created successfully.",
+          tone: "warning",
+          title: "Each size option needs a label, price, and stock quantity.",
         });
-      })
-      .catch((error) => {
-        showToast({
-          tone: "danger",
-          title: error.message || "Failed to save product.",
-        });
-      })
-      .finally(() => setSaving(false));
+        return;
+      }
+    }
+
+    setSaving(true);
+
+    try {
+      const basePrice = Number(form.price);
+      const variantPayload = buildVariantsPayload(activeVariants, basePrice);
+      const totalVariantStock = variantPayload.reduce(
+        (total, variant) => total + Number(variant.stockQuantity || 0),
+        0
+      );
+
+      const formData = new FormData();
+      formData.append("name", form.name.trim());
+      formData.append("description", form.description.trim());
+      formData.append("category", form.category.trim());
+      formData.append("animal", form.animal.trim());
+      formData.append("brand", form.brand.trim());
+      formData.append("price", String(Number(form.price)));
+      if (form.discountPrice) {
+        formData.append("discountPrice", String(Number(form.discountPrice)));
+      }
+      formData.append(
+        "stockQuantity",
+        String(
+          markStockOut
+            ? 0
+            : variantPayload.length
+              ? totalVariantStock
+              : Number(form.stockQuantity)
+        )
+      );
+      formData.append("tags", form.tags);
+      formData.append("variants", JSON.stringify(variantPayload));
+      formData.append("isActive", String(isActive));
+      formData.append("isFeatured", String(isFeatured));
+      formData.append("isOfferEnabled", String(offerEnabled));
+
+      if (isUpdate) {
+        formData.append("existingImages", existingImages.join(", "));
+      }
+
+      imageFiles.forEach((file) => {
+        formData.append("images", file);
+      });
+
+      const response = await fetchWithTimeout(
+        isUpdate && slug
+          ? `${apiBaseUrl}/products/update-product/${slug}`
+          : `${apiBaseUrl}/products/create-product`,
+        {
+          method: isUpdate ? "PATCH" : "POST",
+          body: formData,
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Failed to save product.");
+      }
+
+      if (data.product?.images) {
+        setExistingImages(data.product.images);
+        setImageFiles([]);
+      }
+
+      if (data.product) {
+        setVariants(mapVariantsFromProduct(data.product));
+      }
+
+      showToast({
+        tone: "success",
+        title: isUpdate ? "Product updated successfully." : "Product created successfully.",
+      });
+    } catch (error) {
+      showToast({
+        tone: "danger",
+        title: getApiErrorMessage(error, "Failed to save product."),
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -309,12 +491,13 @@ export default function ProductEditorDashboard({ mode = "create" }) {
                     label: brand.name || brand.slug,
                   }))}
                 />
-                <Field label="Price">
+                <Field label="Base Price (BDT)">
                   <input
                     name="price"
                     value={form.price}
                     onChange={handleChange}
                     type="number"
+                    min="0"
                     placeholder="450"
                     className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
                   />
@@ -329,16 +512,20 @@ export default function ProductEditorDashboard({ mode = "create" }) {
                     className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
                   />
                 </Field>
-                <Field label="Stock Quantity">
-                  <input
-                    name="stockQuantity"
-                    value={form.stockQuantity}
-                    onChange={handleChange}
-                    type="number"
-                    placeholder="24"
-                    className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
-                  />
-                </Field>
+                {!hasConfiguredVariants ? (
+                  <Field label="Stock Quantity">
+                    <input
+                      name="stockQuantity"
+                      value={form.stockQuantity}
+                      onChange={handleChange}
+                      type="number"
+                      min="0"
+                      disabled={markStockOut}
+                      placeholder="24"
+                      className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main disabled:cursor-not-allowed disabled:bg-slate-50"
+                    />
+                  </Field>
+                ) : null}
                 <Field label="Tags">
                   <input
                     name="tags"
@@ -349,16 +536,165 @@ export default function ProductEditorDashboard({ mode = "create" }) {
                     className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
                   />
                 </Field>
-                <Field label="Images">
-                  <input
-                    name="images"
-                    value={form.images}
-                    onChange={handleChange}
-                    type="text"
-                    placeholder="/uploads/products/example.png"
-                    className="h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main md:col-span-2"
-                  />
-                </Field>
+              </div>
+
+              <div className="rounded-2xl border border-neutral-200 bg-mainSoft/20 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-wide text-main/80">
+                      Size / weight options
+                    </p>
+                    <p className="mt-1 text-sm font-semibold text-slate-500">
+                      Add options like 1 KG, 5 KG with their own price and stock.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addVariant}
+                    className="h-10 rounded-xl border border-main/20 bg-white px-4 text-sm font-black text-main transition hover:bg-mainSoft/70"
+                  >
+                    Add option
+                  </button>
+                </div>
+
+                {variants.length ? (
+                  <div className="mt-4 space-y-3">
+                    {variants.map((variant, index) => (
+                      <div
+                        key={variant.clientId}
+                        className="grid gap-3 rounded-xl border border-neutral-200 bg-white p-4 md:grid-cols-[1.2fr_0.8fr_0.8fr_auto]"
+                      >
+                        <div>
+                          <label className="block text-[11px] font-black uppercase tracking-wide text-main/70">
+                            Option {index + 1}
+                          </label>
+                          <input
+                            value={variant.label}
+                            onChange={(event) =>
+                              updateVariant(variant.clientId, "label", event.target.value)
+                            }
+                            placeholder="5 KG"
+                            className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-black uppercase tracking-wide text-main/70">
+                            Price (BDT)
+                          </label>
+                          <input
+                            value={variant.price}
+                            onChange={(event) =>
+                              updateVariant(variant.clientId, "price", event.target.value)
+                            }
+                            type="number"
+                            min="0"
+                            placeholder="500"
+                            className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-black uppercase tracking-wide text-main/70">
+                            Stock
+                          </label>
+                          <input
+                            value={variant.stockQuantity}
+                            onChange={(event) =>
+                              updateVariant(
+                                variant.clientId,
+                                "stockQuantity",
+                                event.target.value
+                              )
+                            }
+                            type="number"
+                            min="0"
+                            placeholder="20"
+                            className="mt-1.5 h-11 w-full rounded-xl border border-neutral-200 bg-white px-3 text-sm font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
+                          />
+                        </div>
+                        <div className="flex items-end">
+                          <button
+                            type="button"
+                            onClick={() => removeVariant(variant.clientId)}
+                            className="h-11 rounded-xl border border-red-100 bg-red-50 px-4 text-sm font-black text-red-600 transition hover:bg-red-100"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm font-semibold text-slate-500">
+                    No size options yet. Use the single stock field above, or add options here.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wide text-main/80">
+                  Product images
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleImageChange}
+                  className="mt-1.5 block w-full text-sm font-semibold text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-mainSoft file:px-3 file:py-2 file:text-sm file:font-black file:text-main"
+                />
+                {existingImages.length || imageFiles.length ? (
+                  <div className="mt-3 flex flex-wrap gap-3">
+                    {existingImages.map((imagePath) => (
+                      <div
+                        key={imagePath}
+                        className="relative overflow-hidden rounded-xl border border-neutral-200 bg-mainSoft/30 p-2"
+                      >
+                        <Image
+                          src={resolveImageUrl(apiBaseUrl, imagePath)}
+                          alt="Product image"
+                          width={88}
+                          height={88}
+                          unoptimized
+                          className="h-20 w-20 rounded-lg object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeExistingImage(imagePath)}
+                          className="absolute right-1 top-1 rounded-full bg-white/90 px-2 text-xs font-black text-red-600"
+                          aria-label="Remove image"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    {imagePreviews.map((preview, index) => (
+                      <div
+                        key={preview}
+                        className="relative overflow-hidden rounded-xl border border-neutral-200 bg-mainSoft/30 p-2"
+                      >
+                        <Image
+                          src={preview}
+                          alt="New product image"
+                          width={88}
+                          height={88}
+                          unoptimized
+                          className="h-20 w-20 rounded-lg object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeNewImage(index)}
+                          className="absolute right-1 top-1 rounded-full bg-white/90 px-2 text-xs font-black text-red-600"
+                          aria-label="Remove new image"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm font-semibold text-slate-500">
+                    Upload one or more product images (max 4MB each).
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -367,8 +703,19 @@ export default function ProductEditorDashboard({ mode = "create" }) {
         <div className="space-y-4">
           <div className="rounded-[24px] border border-neutral-200 bg-white p-5 shadow-lg shadow-main/5">
             <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-mainSoft/30 p-2">
-              <div className="flex h-44 items-center justify-center rounded-xl bg-white text-sm font-black text-main">
-                Product Image Preview
+              <div className="flex h-44 items-center justify-center rounded-xl bg-white">
+                {previewImage ? (
+                  <Image
+                    src={previewImage}
+                    alt="Product preview"
+                    width={176}
+                    height={176}
+                    unoptimized
+                    className="h-40 w-40 rounded-lg object-contain"
+                  />
+                ) : (
+                  <span className="text-sm font-black text-main">Product Image Preview</span>
+                )}
               </div>
             </div>
           </div>
@@ -419,9 +766,8 @@ export default function ProductEditorDashboard({ mode = "create" }) {
               Pricing Note
             </p>
             <ul className="mt-3 space-y-2 text-sm font-semibold leading-6 text-slate-500">
-              <li>Category, animal, and brand are loaded from the backend.</li>
-              <li>Product stock out is derived from stock quantity.</li>
-              <li>Images and tags accept comma-separated values.</li>
+              <li>Add size or weight options with separate prices and stock counts.</li>
+              <li>Without options, use the base price and stock quantity fields.</li>
             </ul>
           </div>
 

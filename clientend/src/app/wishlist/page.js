@@ -6,9 +6,7 @@ import { HiOutlineHeart, HiTrash } from "react-icons/hi2";
 
 import Container from "@/components/Container";
 import { useWishlist } from "@/components/WishlistProvider";
-
-const apiOrigin =
-  process.env.NEXT_PUBLIC_API_ORIGIN || "http://localhost:3000";
+import { getProductImageUrl } from "@/lib/productApi";
 
 const formatPrice = (value) =>
   new Intl.NumberFormat("en-BD", {
@@ -17,17 +15,7 @@ const formatPrice = (value) =>
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 
-const getImageUrl = (src) => {
-  if (!src) {
-    return "/window.svg";
-  }
-
-  if (src.startsWith("http://") || src.startsWith("https://")) {
-    return src;
-  }
-
-  return `${apiOrigin}${src.startsWith("/") ? src : `/${src}`}`;
-};
+const getImageUrl = (src) => getProductImageUrl(src) || "/window.svg";
 
 export default function WishlistPage() {
   const {
@@ -107,6 +95,7 @@ export default function WishlistPage() {
                       alt={item.name}
                       fill
                       sizes="(max-width: 768px) 50vw, 25vw"
+                      unoptimized
                       className="object-contain p-4 transition-transform duration-300 group-hover:scale-105"
                     />
                   </Link>

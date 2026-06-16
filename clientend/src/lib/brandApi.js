@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from "@/lib/apiBaseUrl";
+import { resolveCatalogImageUrl } from "@/lib/categoryApi";
 
 const FETCH_TIMEOUT_MS = 5000;
 
@@ -54,6 +55,7 @@ export async function getBrandNavbarView() {
           : `${name} products and pet care essentials`,
       animalNames: animals,
       image: brand.image || null,
+      imageUrl: resolveCatalogImageUrl(brand.image),
     };
   });
 }

@@ -50,12 +50,12 @@ const getReviews = async (req, res, next) => {
 
 const postReview = async (req, res, next) => {
   try {
-    const { productId, customerName, rating, comment } = req.body;
+    const { productId, rating, comment } = req.body;
 
-    if (!productId || !customerName || !comment || rating === undefined) {
+    if (!productId || !comment || rating === undefined) {
       return res.status(400).json({
         success: false,
-        message: "productId, customerName, rating, and comment are required",
+        message: "productId, rating, and comment are required",
       });
     }
 
@@ -63,6 +63,22 @@ const postReview = async (req, res, next) => {
       return res.status(400).json({
         success: false,
         message: "Valid productId is required",
+      });
+    }
+
+    const parsedRating = Number(rating);
+    if (!Number.isInteger(parsedRating) || parsedRating < 1 || parsedRating > 5) {
+      return res.status(400).json({
+        success: false,
+        message: "Rating must be an integer between 1 and 5",
+      });
+    }
+
+    const trimmedComment = String(comment).trim();
+    if (!trimmedComment) {
+      return res.status(400).json({
+        success: false,
+        message: "Comment is required",
       });
     }
 
@@ -76,9 +92,9 @@ const postReview = async (req, res, next) => {
 
     const review = await Review.create({
       product: product._id,
-      customerName: customerName.trim(),
-      rating: Number(rating),
-      comment: comment.trim(),
+      customerName: req.user.name.trim(),
+      rating: parsedRating,
+      comment: trimmedComment,
     });
 
     return res.status(201).json({

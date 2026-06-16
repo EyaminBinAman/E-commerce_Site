@@ -1,6 +1,8 @@
+import Image from "next/image";
 import Link from "next/link";
 
 import { slugifyCategory } from "@/lib/catalogUtils";
+import { resolveCatalogImageUrl } from "@/lib/categoryApi";
 
 export default function CategorySidebar({ animal, activeSubcategory, brands = [] }) {
   const normalizedBrands = brands
@@ -16,6 +18,11 @@ export default function CategorySidebar({ animal, activeSubcategory, brands = []
     })
     .filter(Boolean);
 
+  const categoryDetailsByName = (animal.categoryDetails || []).reduce((acc, item) => {
+    acc[item.name] = item;
+    return acc;
+  }, {});
+
   return (
     <aside className="rounded-2xl bg-white p-6 shadow-[0_16px_45px_rgba(23,63,49,0.08)] lg:sticky lg:top-[12.5rem] lg:self-start">
       <h2 className="text-2xl font-black text-main">
@@ -29,16 +36,32 @@ export default function CategorySidebar({ animal, activeSubcategory, brands = []
             index === 0
               ? `/categories/${animal.slug}`
               : `/categories/${animal.slug}?sub=${slugifyCategory(category)}`;
+          const details = categoryDetailsByName[category];
+          const imageUrl = resolveCatalogImageUrl(details?.image);
 
           return (
             <Link
               key={category}
               href={href}
-              className={`block w-full rounded-lg px-4 py-3 text-left text-lg font-black text-main transition-colors ${
+              className={`flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-lg font-black text-main transition-colors ${
                 isActive ? "bg-[#e6f3ec]" : "hover:bg-[#f4faf6]"
               }`}
             >
-              {category}
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-mainSoft">
+                {imageUrl ? (
+                  <Image
+                    src={imageUrl}
+                    alt={category}
+                    width={32}
+                    height={32}
+                    unoptimized
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="text-base">{details?.icon || animal.icon || "🐾"}</span>
+                )}
+              </span>
+              <span>{category}</span>
             </Link>
           );
         })}

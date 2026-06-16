@@ -21,6 +21,7 @@ import {
   readGuestCartItems,
   writeGuestCartItems,
 } from "@/lib/guestStorage";
+import { fetchDeliveryZones } from "@/lib/deliveryApi";
 
 const CartContext = createContext(null);
 
@@ -228,10 +229,12 @@ export function CartProvider({ children }) {
       if (!user) {
         const guestCart = formatGuestCart(readGuestCartItems());
         setCart(guestCart);
+        const deliverySettings = await fetchDeliveryZones().catch(() => null);
         return calculateGuestCartSummary({
           subtotal: guestCart.subtotal,
           deliveryZone,
           promoCode,
+          deliverySettings,
         });
       }
 

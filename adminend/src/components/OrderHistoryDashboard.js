@@ -10,6 +10,8 @@ import {
   getOrdersFromApi,
   orderStatusOptions,
   paymentStatusOptions,
+  UNPAID_DELIVERY_MESSAGE,
+  canMarkOrderDelivered,
   updateOrderPaymentStatusOnApi,
   updateOrderStatusOnApi,
 } from "@/lib/orderApi";
@@ -314,6 +316,14 @@ export default function OrderHistoryDashboard({
   }, []);
 
   async function handleOrderStatusChange(order, nextStatus) {
+    if (nextStatus === "Delivered" && !canMarkOrderDelivered(order)) {
+      showToast({
+        tone: "danger",
+        title: UNPAID_DELIVERY_MESSAGE,
+      });
+      return;
+    }
+
     try {
       const updated = await updateOrderStatusOnApi(order.mongoId, nextStatus);
       setAllOrderRows((currentRows) =>

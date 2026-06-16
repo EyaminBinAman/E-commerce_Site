@@ -17,12 +17,29 @@ export function getProductImageUrl(src) {
 }
 
 export function mapProductForListingCard(product) {
-  const price =
-    typeof product.discountPrice === "number"
-      ? product.discountPrice
-      : Number(product.price) || 0;
+  const basePrice = Number(product.price) || 0;
+  const activeVariants = (product.variants || []).filter(
+    (variant) => variant.isActive !== false && (variant.value || variant.name)
+  );
+
+  let unitBasePrice =
+    typeof product.discountPrice === "number" ? product.discountPrice : basePrice;
+  let price = unitBasePrice;
+  let stockQuantity = product.stockQuantity ?? 0;
+
+  if (activeVariants.length) {
+    const variantPrices = activeVariants.map(
+      (variant) => unitBasePrice + Number(variant.priceAdjustment || 0)
+    );
+    price = Math.min(...variantPrices);
+    stockQuantity = activeVariants.reduce(
+      (total, variant) => total + Number(variant.stockQuantity || 0),
+      0
+    );
+  }
+
   const oldPrice =
-    typeof product.discountPrice === "number" ? Number(product.price) || null : null;
+    typeof product.discountPrice === "number" ? basePrice : null;
 
   const badges = [];
   if (product.isOfferEnabled) badges.push("Sale");
@@ -31,7 +48,21 @@ export function mapProductForListingCard(product) {
   const discount =
     product.discountPercentage > 0 ? `-${Math.round(product.discountPercentage)}%` : null;
 
+  const variants = activeVariants.map((variant) => {
+    const variantPrice = unitBasePrice + Number(variant.priceAdjustment || 0);
+    const variantStock = Number(variant.stockQuantity || 0);
+
+    return {
+      _id: variant._id,
+      label: variant.value || variant.name || "Option",
+      price: variantPrice,
+      stockQuantity: variantStock,
+      isOutOfStock: variantStock <= 0,
+    };
+  });
+
   return {
+    _id: product._id,
     slug: product.slug,
     name: product.name,
     brand: product.brand?.name || "Brand",
@@ -42,7 +73,13 @@ export function mapProductForListingCard(product) {
     ratingCount: 0,
     imageUrl: getProductImageUrl(product.images?.[0]),
     emoji: "📦",
-    isOutOfStock: !!product.isOutOfStock,
+    stockQuantity,
+    variants,
+    hasVariants: variants.length > 0,
+    isOutOfStock:
+      variants.length > 0
+        ? variants.every((variant) => variant.isOutOfStock)
+        : !!product.isOutOfStock || stockQuantity <= 0,
     animal: product.animal?.slug || product.animal || "",
     category: product.category || null,
     subcategory: product.category?.name || product.subcategory || "",
