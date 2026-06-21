@@ -60,7 +60,7 @@ export default function CustomerManagementDashboard() {
       {
         title: "Total Users",
         value: String(accounts.length).padStart(2, "0"),
-        description: "All client and admin accounts in the system.",
+        description: "All user and admin accounts in the system.",
         accent: "from-accent to-accentSoft",
         ring: "ring-accent/20",
       },
@@ -93,7 +93,7 @@ export default function CustomerManagementDashboard() {
             Customer Management
           </h1>
           <p className="mt-1.5 max-w-2xl text-sm font-semibold leading-6 text-slate-500">
-            Review client and admin accounts, contact details, join dates, roles,
+            Review user and admin accounts, contact details, join dates, roles,
             and verification status from one place.
           </p>
         </div>
@@ -159,7 +159,7 @@ export default function CustomerManagementDashboard() {
                     </td>
                     <td className="px-8 py-6">
                       <Badge tone={account.role === "admin" ? "blue" : "gray"}>
-                        {account.role === "admin" ? "Admin" : "Client"}
+                        {account.role === "admin" ? "Admin" : "User"}
                       </Badge>
                     </td>
                     <td className="px-8 py-6 text-sm font-semibold text-slate-600">

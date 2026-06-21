@@ -53,7 +53,7 @@ export default function BrandListDashboard() {
 
     async function loadBrands() {
       try {
-        const data = await adminApi("/brands/get-brands");
+        const data = await adminApi("/brands/get-brands?includeInactive=true");
         if (alive) {
           setBrands(data.brands || []);
         }

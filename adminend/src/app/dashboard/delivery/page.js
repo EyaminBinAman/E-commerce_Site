@@ -89,10 +89,9 @@ export default function DeliveryPage() {
 
   const summary = useMemo(() => {
     const pending = orders.filter((order) => order.orderStatus === "Pending").length;
-    const processing = orders.filter((order) => order.orderStatus === "Processing").length;
     const shipping = orders.filter((order) => order.orderStatus === "Shipping").length;
     const delivered = orders.filter((order) => order.orderStatus === "Delivered").length;
-    const inTransit = processing + shipping;
+    const inTransit = shipping;
     const collected = orders
       .filter((order) => order.paymentStatus === "Paid")
       .reduce((sum, order) => sum + (order.grandTotal || 0), 0);
@@ -102,7 +101,6 @@ export default function DeliveryPage() {
 
     return {
       pending,
-      processing,
       shipping,
       delivered,
       inTransit,
@@ -114,7 +112,7 @@ export default function DeliveryPage() {
 
   const visibleOrders = useMemo(() => {
     return orders.filter((order) =>
-      ["Pending", "Processing", "Shipping"].includes(order.orderStatus)
+      ["Shipping"].includes(order.orderStatus)
     );
   }, [orders]);
 
@@ -160,7 +158,6 @@ export default function DeliveryPage() {
 
       <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <Metric title="Pending" value={summary.pending} />
-        <Metric title="Processing" value={summary.processing} />
         <Metric title="Shipping" value={summary.shipping} />
         <Metric title="Delivered" value={summary.delivered} />
         <Metric title="Total Orders" value={summary.total} />
@@ -231,7 +228,7 @@ export default function DeliveryPage() {
                         .join(", ") || "No address"}
                     </td>
                     <td className="px-4 py-4 text-center">
-                      <Badge tone={order.orderStatus === "Shipping" ? "blue" : "yellow"}>
+                      <Badge tone="blue">
                         {order.orderStatus}
                       </Badge>
                     </td>

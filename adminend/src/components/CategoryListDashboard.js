@@ -216,6 +216,23 @@ export default function CategoryListDashboard() {
     }
   };
 
+  const requestToggleCategoryStatus = (category, nextValue) => {
+    if (!nextValue) {
+      confirm({
+        title: `Turn off ${category.category}?`,
+        description:
+          "This category will be hidden from the storefront until it is turned back on.",
+        confirmLabel: "Turn off",
+        cancelLabel: "Cancel",
+        tone: "danger",
+        onConfirm: () => toggleCategoryStatus(category.slug, false),
+      });
+      return;
+    }
+
+    void toggleCategoryStatus(category.slug, true);
+  };
+
   const confirmDeleteAnimal = (id, name) => {
     const hasCategories = categoryRows.some(
       (item) =>
@@ -261,7 +278,7 @@ export default function CategoryListDashboard() {
     });
   };
 
-  const confirmDeleteCategory = (category) => {
+  const confirmDeleteCategory = (categorySlug) => {
     confirm({
       title: "Delete this category?",
       description:
@@ -272,14 +289,14 @@ export default function CategoryListDashboard() {
       onConfirm: async () => {
         try {
           const response = await fetchWithTimeout(
-            `${apiBaseUrl}/categories/delete-category/${encodeURIComponent(slug)}`,
+            `${apiBaseUrl}/categories/delete-category/${encodeURIComponent(categorySlug)}`,
             { method: "DELETE" }
           );
           const data = await response.json();
           if (!response.ok || !data.success) {
             throw new Error(data.message || "Failed to delete category");
           }
-          setCategoryRows((prev) => prev.filter((item) => item.slug !== slug));
+          setCategoryRows((prev) => prev.filter((item) => item.slug !== categorySlug));
           showToast({ tone: "success", title: "Category deleted." });
         } catch (error) {
           showToast({
@@ -446,7 +463,7 @@ export default function CategoryListDashboard() {
                   <td className="px-8 py-5 text-center">
                     <StatusToggle
                       on={item.status === "On"}
-                      onToggle={() => toggleCategoryStatus(item.slug, item.status !== "On")}
+                      onToggle={() => requestToggleCategoryStatus(item, item.status !== "On")}
                     />
                   </td>
                   <td className="px-8 py-5 text-sm font-semibold text-slate-500">

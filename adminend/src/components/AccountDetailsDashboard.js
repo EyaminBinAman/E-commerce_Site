@@ -127,7 +127,7 @@ export default function AccountDetailsDashboard({ accountId }) {
                   </div>
                 </div>
                 <Badge tone={account.role === "admin" ? "blue" : "gray"}>
-                  {account.role === "admin" ? "Admin" : "Client"}
+                  {account.role === "admin" ? "Admin" : "User"}
                 </Badge>
               </div>
 
