@@ -11,7 +11,7 @@ import {
 } from "react";
 
 import { useAuth } from "@/context/AuthContext";
-import { getApiBaseUrl } from "@/lib/apiBaseUrl";
+import { apiRequest } from "@/lib/api";
 import {
   clearGuestWishlistItems,
   normalizeWishlistProduct,
@@ -20,18 +20,6 @@ import {
 } from "@/lib/guestStorage";
 
 const WishlistContext = createContext(null);
-
-async function readResponse(response) {
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const error = new Error(data.message || "Something went wrong");
-    error.status = response.status;
-    throw error;
-  }
-
-  return data;
-}
 
 export function WishlistProvider({ children }) {
   const { user, loaded } = useAuth();
@@ -55,10 +43,7 @@ export function WishlistProvider({ children }) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${getApiBaseUrl()}/wishlist/get-wishlist`, {
-        credentials: "include",
-      });
-      const data = await readResponse(response);
+      const data = await apiRequest("/wishlist/get-wishlist");
       const nextItems = data.wishlist?.items || [];
       setItems(nextItems);
       return nextItems;
@@ -80,14 +65,10 @@ export function WishlistProvider({ children }) {
     }
 
     for (const item of guestItems) {
-      await fetch(`${getApiBaseUrl()}/wishlist/add-to-wishlist`, {
+      await apiRequest("/wishlist/add-to-wishlist", {
         method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({ productId: item._id }),
-      }).then(readResponse);
+      });
     }
 
     clearGuestWishlistItems();
@@ -107,15 +88,10 @@ export function WishlistProvider({ children }) {
         return persistGuestWishlist([normalizedProduct, ...currentItems]);
       }
 
-      const response = await fetch(`${getApiBaseUrl()}/wishlist/add-to-wishlist`, {
+      const data = await apiRequest("/wishlist/add-to-wishlist", {
         method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({ productId: product._id }),
       });
-      const data = await readResponse(response);
       const nextItems = data.wishlist?.items || [];
       setItems(nextItems);
       return nextItems;
@@ -132,14 +108,9 @@ export function WishlistProvider({ children }) {
         return persistGuestWishlist(nextItems);
       }
 
-      const response = await fetch(
-        `${getApiBaseUrl()}/wishlist/remove-wishlist-item/${productId}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        }
-      );
-      const data = await readResponse(response);
+      const data = await apiRequest(`/wishlist/remove-wishlist-item/${productId}`, {
+        method: "DELETE",
+      });
       const nextItems = data.wishlist?.items || [];
       setItems(nextItems);
       return nextItems;
@@ -153,11 +124,9 @@ export function WishlistProvider({ children }) {
       return persistGuestWishlist([]);
     }
 
-    const response = await fetch(`${getApiBaseUrl()}/wishlist/clear-wishlist`, {
+    const data = await apiRequest("/wishlist/clear-wishlist", {
       method: "DELETE",
-      credentials: "include",
     });
-    const data = await readResponse(response);
     const nextItems = data.wishlist?.items || [];
     setItems(nextItems);
     return nextItems;

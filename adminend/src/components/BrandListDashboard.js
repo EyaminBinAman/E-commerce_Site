@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import DashboardShell, { Icon } from "@/components/DashboardShell";
@@ -44,9 +45,14 @@ function normalizeAnimals(value) {
 
 export default function BrandListDashboard() {
   const { showToast, confirm } = useToast();
+  const searchParams = useSearchParams();
   const [brands, setBrands] = useState([]);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(searchParams.get("search") || "");
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setSearch(searchParams.get("search") || "");
+  }, [searchParams]);
 
   useEffect(() => {
     let alive = true;

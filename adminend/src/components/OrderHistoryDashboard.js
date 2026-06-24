@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 
 import DashboardShell, { Badge, Icon } from "@/components/DashboardShell";
 import { useToast } from "@/components/ui/toast";
@@ -10,6 +11,8 @@ import {
   getOrdersFromApi,
   orderStatusOptions,
   paymentStatusOptions,
+  UNPAID_DELIVERY_MESSAGE,
+  canMarkOrderDelivered,
   updateOrderPaymentStatusOnApi,
   updateOrderStatusOnApi,
 } from "@/lib/orderApi";
@@ -265,10 +268,15 @@ export default function OrderHistoryDashboard({
   pageDescription = "Review paid and cancelled orders, then open any record for full details.",
 }) {
   const { showToast } = useToast();
+  const searchParams = useSearchParams();
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [allOrderRows, setAllOrderRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchText, setSearchText] = useState("");
+  const [searchText, setSearchText] = useState(searchParams.get("search") || "");
+
+  useEffect(() => {
+    setSearchText(searchParams.get("search") || "");
+  }, [searchParams]);
 
   const orderRows = useMemo(
     () => filterOrdersByMode(allOrderRows, rowFilter),
@@ -314,6 +322,14 @@ export default function OrderHistoryDashboard({
   }, []);
 
   async function handleOrderStatusChange(order, nextStatus) {
+    if (nextStatus === "Delivered" && !canMarkOrderDelivered(order)) {
+      showToast({
+        tone: "danger",
+        title: UNPAID_DELIVERY_MESSAGE,
+      });
+      return;
+    }
+
     try {
       const updated = await updateOrderStatusOnApi(order.mongoId, nextStatus);
       setAllOrderRows((currentRows) =>

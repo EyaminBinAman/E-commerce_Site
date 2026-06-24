@@ -113,12 +113,15 @@ function BannerSection({ title, items, onToggle, onDelete, onEdit }) {
             </tr>
           </thead>
           <tbody>
-            {items.map((banner) => (
-              <tr key={banner.id} className="border-b border-neutral-100 last:border-b-0">
+            {items.map((banner) => {
+              const bannerId = banner._id || banner.id;
+
+              return (
+              <tr key={bannerId} className="border-b border-neutral-100 last:border-b-0">
                 <td className="px-4 py-4">
                   <p className="text-sm font-black text-main">{banner.name}</p>
                   <p className="mt-1 text-[11px] font-semibold text-slate-400">
-                    {banner.id}
+                    {bannerId}
                   </p>
                 </td>
                 <td className="px-4 py-4">
@@ -127,7 +130,7 @@ function BannerSection({ title, items, onToggle, onDelete, onEdit }) {
                   </p>
                 </td>
                 <td className="px-4 py-4 text-center">
-                  <button type="button" onClick={() => onToggle(banner.id)} className="inline-flex">
+                  <button type="button" onClick={() => onToggle(banner)} className="inline-flex">
                     <Badge tone={banner.isActive ? "green" : "gray"}>
                       {banner.isActive ? "Active" : "Hidden"}
                     </Badge>
@@ -145,7 +148,7 @@ function BannerSection({ title, items, onToggle, onDelete, onEdit }) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => onDelete(banner.id, banner.name)}
+                      onClick={() => onDelete(banner)}
                       className="inline-flex h-8 items-center gap-1 rounded-lg border border-red-100 bg-red-50 px-3 text-xs font-black text-red-600 transition hover:bg-red-100"
                     >
                       <Icon name="trash" className="h-3.5 w-3.5" />
@@ -154,7 +157,8 @@ function BannerSection({ title, items, onToggle, onDelete, onEdit }) {
                   </div>
                 </td>
               </tr>
-            ))}
+            );
+            })}
           </tbody>
         </table>
       </div>
@@ -236,8 +240,9 @@ export default function BannersPage() {
   };
 
   const startEdit = (banner) => {
+    const bannerId = banner._id || banner.id;
     setShowCreate(true);
-    setEditingId(banner._id);
+    setEditingId(bannerId);
     setForm({
       name: banner.name || "",
       bannerType: banner.bannerType,
@@ -296,10 +301,14 @@ export default function BannersPage() {
   };
 
   const toggleBanner = async (banner) => {
+    const bannerId = banner._id || banner.id;
+
     try {
-      const updated = await toggleBannerActiveOnApi(banner._id, !banner.isActive);
+      const updated = await toggleBannerActiveOnApi(bannerId, !banner.isActive);
       setBanners((current) =>
-        current.map((row) => (row._id === updated._id ? updated : row))
+        current.map((row) =>
+          (row._id || row.id) === (updated._id || updated.id) ? updated : row
+        )
       );
       showToast({
         tone: "success",
@@ -314,16 +323,20 @@ export default function BannersPage() {
   };
 
   const deleteBanner = (banner) => {
+    const bannerId = banner._id || banner.id;
+
     confirm({
-      title: `Delete ${banner.name}?`,
+      title: `Delete ${banner.name || "this banner"}?`,
       description: "This banner and its image will be removed.",
       confirmLabel: "Delete",
       tone: "danger",
       onConfirm: async () => {
         try {
-          await deleteBannerOnApi(banner._id);
-          setBanners((current) => current.filter((row) => row._id !== banner._id));
-          if (editingId === banner._id) {
+          await deleteBannerOnApi(bannerId);
+          setBanners((current) =>
+            current.filter((row) => (row._id || row.id) !== bannerId)
+          );
+          if (editingId === bannerId) {
             resetForm();
           }
           showToast({ tone: "success", title: "Banner deleted." });

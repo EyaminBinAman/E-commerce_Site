@@ -34,6 +34,12 @@ const categorySchema = new mongoose.Schema(
       maxlength: 50,
     },
 
+    icon: {
+      type: String,
+      default: "🐾",
+      trim: true,
+    },
+
     image: {
       type: String,
       default: null,

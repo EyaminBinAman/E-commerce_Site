@@ -1,35 +1,49 @@
+import axios from "axios";
+
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
+export const adminClient = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: true,
+  timeout: 10000,
+  validateStatus: () => true,
+});
+
+function buildAxiosConfig(options = {}) {
+  const { body, headers, signal, method = "GET", ...rest } = options;
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+
+  return {
+    method,
+    headers: {
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      ...(headers || {}),
+    },
+    data: isFormData || typeof body !== "string" ? body : body ? JSON.parse(body) : undefined,
+    signal,
+    ...rest,
+  };
+}
+
 async function fetchAdminJson(path, options = {}) {
-  const controller = new AbortController();
-  const timeout = globalThis.setTimeout(() => controller.abort(), 10000);
-
-  let response;
-
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(options.headers || {}),
+    const response = await adminClient(path, buildAxiosConfig(options));
+
+    return {
+      response: {
+        ok: response.status >= 200 && response.status < 300,
+        status: response.status,
       },
-      ...options,
-      signal: options.signal || controller.signal,
-    });
+      data: response.data || {},
+    };
   } catch (error) {
-    if (error.name === "AbortError") {
+    if (error.code === "ECONNABORTED" || error.name === "AbortError") {
       throw new Error("Request timed out. Check that the backend is running.");
     }
 
     throw error;
-  } finally {
-    globalThis.clearTimeout(timeout);
   }
-
-  const data = await response.json().catch(() => ({}));
-
-  return { response, data };
 }
 
 export async function adminApi(path, options = {}) {

@@ -1,4 +1,5 @@
 const Brand = require("../../models/Brand");
+const { deleteImageFile } = require("../../utils/imageFiles");
 
 const normalizeAnimalNames = (value) => {
   if (Array.isArray(value)) {
@@ -39,8 +40,15 @@ const getBrands = async (req, res, next) => {
 const createBrand = async (req, res, next) => {
   try {
     const { name, animalNames, image } = req.body;
+    const uploadedImage = req.file ? `/uploads/brands/${req.file.filename}` : null;
+    const trimmedName = name?.trim();
+    const trimmedImage = typeof image === "string" ? image.trim() : "";
 
-    if (!name) {
+    if (!trimmedName) {
+      if (req.file) {
+        deleteImageFile(`/uploads/brands/${req.file.filename}`, "brands");
+      }
+
       return res.status(400).json({
         success: false,
         message: "Brand name is required",
@@ -49,13 +57,17 @@ const createBrand = async (req, res, next) => {
 
     const existingBrand = await Brand.findOne({
       name: {
-        $regex: `^${name.trim()}$`,
+        $regex: `^${trimmedName}$`,
         $options: "i",
       },
       isDeleted: { $ne: true },
     });
 
     if (existingBrand) {
+      if (req.file) {
+        deleteImageFile(`/uploads/brands/${req.file.filename}`, "brands");
+      }
+
       return res.status(400).json({
         success: false,
         message: "Brand already exists",
@@ -63,9 +75,9 @@ const createBrand = async (req, res, next) => {
     }
 
     const brand = await Brand.create({
-      name,
+      name: trimmedName,
       animalNames: normalizeAnimalNames(animalNames),
-      image: typeof image === "string" ? image.trim() || null : null,
+      image: uploadedImage || trimmedImage || null,
     });
 
     return res.status(201).json({
@@ -74,6 +86,9 @@ const createBrand = async (req, res, next) => {
       brand,
     });
   } catch (error) {
+    if (req.file) {
+      deleteImageFile(`/uploads/brands/${req.file.filename}`, "brands");
+    }
     next(error);
   }
 };
@@ -82,10 +97,16 @@ const updateBrandBySlug = async (req, res, next) => {
   try {
     const { slug } = req.params;
     const { name, animalNames, image } = req.body;
+    const uploadedImage = req.file ? `/uploads/brands/${req.file.filename}` : null;
+    const trimmedImage = typeof image === "string" ? image.trim() : "";
 
     const brand = await Brand.findOne({ slug });
 
     if (!brand) {
+      if (req.file) {
+        deleteImageFile(`/uploads/brands/${req.file.filename}`, "brands");
+      }
+
       return res.status(404).json({
         success: false,
         message: "Brand not found",
@@ -103,21 +124,31 @@ const updateBrandBySlug = async (req, res, next) => {
       });
 
       if (existingBrand) {
+        if (req.file) {
+          deleteImageFile(`/uploads/brands/${req.file.filename}`, "brands");
+        }
+
         return res.status(400).json({
           success: false,
           message: "Brand already exists",
         });
       }
 
-      brand.name = name;
+      brand.name = name.trim();
     }
 
     if (animalNames !== undefined) {
       brand.animalNames = normalizeAnimalNames(animalNames);
     }
 
-    if (typeof image === "string") {
-      brand.image = image.trim() || null;
+    if (uploadedImage) {
+      deleteImageFile(brand.image, "brands");
+      brand.image = uploadedImage;
+    } else if (trimmedImage) {
+      if (trimmedImage !== brand.image) {
+        deleteImageFile(brand.image, "brands");
+      }
+      brand.image = trimmedImage;
     }
 
     await brand.save();
@@ -128,6 +159,9 @@ const updateBrandBySlug = async (req, res, next) => {
       brand,
     });
   } catch (error) {
+    if (req.file) {
+      deleteImageFile(`/uploads/brands/${req.file.filename}`, "brands");
+    }
     next(error);
   }
 };

@@ -11,7 +11,7 @@ import {
 } from "react";
 
 import { useAuth } from "@/context/AuthContext";
-import { getApiBaseUrl } from "@/lib/apiBaseUrl";
+import { apiRequest } from "@/lib/api";
 import {
   buildGuestCartItem,
   calculateGuestCartSummary,
@@ -21,20 +21,9 @@ import {
   readGuestCartItems,
   writeGuestCartItems,
 } from "@/lib/guestStorage";
+import { fetchDeliveryZones } from "@/lib/deliveryApi";
 
 const CartContext = createContext(null);
-
-async function readResponse(response) {
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const error = new Error(data.message || "Something went wrong");
-    error.status = response.status;
-    throw error;
-  }
-
-  return data;
-}
 
 export function CartProvider({ children }) {
   const { user, loaded } = useAuth();
@@ -59,10 +48,7 @@ export function CartProvider({ children }) {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${getApiBaseUrl()}/cart/get-cart`, {
-        credentials: "include",
-      });
-      const data = await readResponse(response);
+      const data = await apiRequest("/cart/get-cart");
       setCart(data.cart);
       return data.cart;
     } catch (error) {
@@ -83,18 +69,14 @@ export function CartProvider({ children }) {
     }
 
     for (const item of guestItems) {
-      await fetch(`${getApiBaseUrl()}/cart/add-to-cart`, {
+      await apiRequest("/cart/add-to-cart", {
         method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           productId: item.product._id,
           variantId: item.variant?._id || null,
           quantity: item.quantity,
         }),
-      }).then(readResponse);
+      });
     }
 
     clearGuestCartItems();
@@ -131,19 +113,14 @@ export function CartProvider({ children }) {
         ]);
       }
 
-      const response = await fetch(`${getApiBaseUrl()}/cart/add-to-cart`, {
+      const data = await apiRequest("/cart/add-to-cart", {
         method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           productId,
           variantId: variantId || null,
           quantity,
         }),
       });
-      const data = await readResponse(response);
       setCart(data.cart);
       return data.cart;
     },
@@ -167,18 +144,10 @@ export function CartProvider({ children }) {
         return persistGuestCart(updatedItems);
       }
 
-      const response = await fetch(
-        `${getApiBaseUrl()}/cart/update-cart-item/${itemId}`,
-        {
-          method: "PATCH",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ quantity }),
-        }
-      );
-      const data = await readResponse(response);
+      const data = await apiRequest(`/cart/update-cart-item/${itemId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ quantity }),
+      });
       setCart(data.cart);
       return data.cart;
     },
@@ -194,14 +163,9 @@ export function CartProvider({ children }) {
         return persistGuestCart(updatedItems);
       }
 
-      const response = await fetch(
-        `${getApiBaseUrl()}/cart/remove-cart-item/${itemId}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        }
-      );
-      const data = await readResponse(response);
+      const data = await apiRequest(`/cart/remove-cart-item/${itemId}`, {
+        method: "DELETE",
+      });
       setCart(data.cart);
       return data.cart;
     },
@@ -214,11 +178,9 @@ export function CartProvider({ children }) {
       return persistGuestCart([]);
     }
 
-    const response = await fetch(`${getApiBaseUrl()}/cart/clear-cart`, {
+    const data = await apiRequest("/cart/clear-cart", {
       method: "DELETE",
-      credentials: "include",
     });
-    const data = await readResponse(response);
     setCart(data.cart);
     return data.cart;
   }, [persistGuestCart, user]);
@@ -228,25 +190,22 @@ export function CartProvider({ children }) {
       if (!user) {
         const guestCart = formatGuestCart(readGuestCartItems());
         setCart(guestCart);
+        const deliverySettings = await fetchDeliveryZones().catch(() => null);
         return calculateGuestCartSummary({
           subtotal: guestCart.subtotal,
           deliveryZone,
           promoCode,
+          deliverySettings,
         });
       }
 
-      const response = await fetch(`${getApiBaseUrl()}/cart/calculate-cart`, {
+      const data = await apiRequest("/cart/calculate-cart", {
         method: "POST",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           promoCode,
           deliveryZone,
         }),
       });
-      const data = await readResponse(response);
       setCart(data.cart);
       return data.summary;
     },

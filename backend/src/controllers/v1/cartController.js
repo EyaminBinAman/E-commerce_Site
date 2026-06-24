@@ -2,6 +2,11 @@ const mongoose = require("mongoose");
 
 const Cart = require("../../models/Cart");
 const Product = require("../../models/Product");
+const {
+  getDeliveryCharge,
+  getDeliveryZoneSettings,
+  roundMoney,
+} = require("../../services/deliveryZoneService");
 
 let PromoCode = null;
 
@@ -134,20 +139,6 @@ const formatCart = async (cart) => {
   };
 };
 
-const roundMoney = (value) => {
-  return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
-};
-
-const getDeliveryCharge = (deliveryZone, discountedSubtotal) => {
-  const normalizedZone = deliveryZone === "outside-dhaka" ? "outside-dhaka" : "inside-dhaka";
-  const baseCharge = normalizedZone === "outside-dhaka" ? 120 : 60;
-
-  return {
-    deliveryZone: normalizedZone,
-    deliveryCharge: discountedSubtotal >= 500 ? 0 : baseCharge,
-  };
-};
-
 const findPromoCode = async (promoCode) => {
   if (!PromoCode || !promoCode?.trim()) {
     return null;
@@ -259,16 +250,13 @@ const buildCartSummary = async ({ cart, promoCode, deliveryZone, user }) => {
   const discountedSubtotal = roundMoney(
     Math.max(0, itemsSubtotal - voucher.voucherDiscount)
   );
-  const delivery = getDeliveryCharge(deliveryZone, discountedSubtotal);
-  const vatRate = 0.05;
-  const vat = roundMoney(discountedSubtotal * vatRate);
-  const extraCharges = [];
-  const extraChargeTotal = roundMoney(
-    extraCharges.reduce((sum, charge) => sum + charge.amount, 0)
+  const deliverySettings = await getDeliveryZoneSettings();
+  const delivery = getDeliveryCharge(
+    deliveryZone,
+    discountedSubtotal,
+    deliverySettings
   );
-  const grandTotal = roundMoney(
-    discountedSubtotal + delivery.deliveryCharge + vat + extraChargeTotal
-  );
+  const grandTotal = roundMoney(discountedSubtotal + delivery.deliveryCharge);
 
   return {
     cart: formattedCart,
@@ -280,11 +268,7 @@ const buildCartSummary = async ({ cart, promoCode, deliveryZone, user }) => {
       discountedSubtotal,
       deliveryZone: delivery.deliveryZone,
       deliveryCharge: delivery.deliveryCharge,
-      freeDeliveryThreshold: 500,
-      vatRate,
-      vat,
-      extraCharges,
-      extraChargeTotal,
+      freeDeliveryThreshold: delivery.freeDeliveryThreshold,
       grandTotal,
     },
   };

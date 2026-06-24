@@ -1,17 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import Container from "@/components/Container";
-import { animals as fallbackAnimals } from "@/data/categoryPageData";
-
-const fallbackBrands = [
-  { name: "Orijen", slug: "orijen" },
-  { name: "Royal Canin", slug: "royal-canin" },
-  { name: "KONG", slug: "kong" },
-];
+import { resolveCatalogImageUrl } from "@/lib/categoryApi";
 
 const navLinks = [
   { label: "Home", href: "/" },
@@ -72,8 +67,8 @@ function NavDropdown({ label, open, onToggle, onClose, children }) {
 }
 
 export default function Navbar({
-  animals = fallbackAnimals,
-  brands = fallbackBrands,
+  animals = [],
+  brands = [],
 }) {
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
   const [isBrandsOpen, setIsBrandsOpen] = useState(false);
@@ -116,7 +111,20 @@ export default function Navbar({
                         onClick={closeMenus}
                         className="flex items-center gap-3 rounded-md px-3 py-3 text-sm font-black transition-colors hover:bg-[#eef8f2]"
                       >
-                        <span className="text-lg">{animal.icon}</span>
+                        <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-mainSoft">
+                          {resolveCatalogImageUrl(animal.image) ? (
+                            <Image
+                              src={resolveCatalogImageUrl(animal.image)}
+                              alt={animal.name}
+                              width={28}
+                              height={28}
+                              unoptimized
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-lg">{animal.icon}</span>
+                          )}
+                        </span>
                         {animal.name}
                       </Link>
                     ))}
@@ -141,8 +149,29 @@ export default function Navbar({
                         key={brand.slug}
                         href={`/brands/${brand.slug}`}
                         onClick={closeMenus}
-                        className="block rounded-md px-3 py-3 text-sm font-black transition-colors hover:bg-[#eef8f2]"
+                        className="flex items-center gap-3 rounded-md px-3 py-3 text-sm font-black transition-colors hover:bg-[#eef8f2]"
                       >
+                        <span className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-mainSoft">
+                          {brand.imageUrl ? (
+                            <Image
+                              src={brand.imageUrl}
+                              alt={brand.name}
+                              width={28}
+                              height={28}
+                              unoptimized
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-[10px] font-black text-main">
+                              {(brand.name || "?")
+                                .split(" ")
+                                .slice(0, 2)
+                                .map((part) => part[0])
+                                .join("")
+                                .toUpperCase()}
+                            </span>
+                          )}
+                        </span>
                         {brand.name}
                       </Link>
                     ))}

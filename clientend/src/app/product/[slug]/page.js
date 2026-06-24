@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import axios from "axios";
 
 import Container from "@/components/Container";
 import ProductDetails from "@/components/ProductDetails";
@@ -7,22 +8,20 @@ const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
 async function getProduct(slug) {
-  const response = await fetch(
+  const response = await axios.get(
     `${apiBaseUrl}/products/get-product/${encodeURIComponent(slug)}`,
-    {
-      cache: "no-store",
-    }
+    { validateStatus: () => true }
   );
 
   if (response.status === 404) {
     return null;
   }
 
-  if (!response.ok) {
+  if (response.status < 200 || response.status >= 300) {
     throw new Error("Failed to load product");
   }
 
-  return response.json();
+  return response.data;
 }
 
 export async function generateMetadata({ params }) {

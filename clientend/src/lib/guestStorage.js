@@ -86,11 +86,27 @@ export const formatGuestCart = (items) => {
   };
 };
 
+const resolveWishlistImage = (product) => {
+  if (Array.isArray(product.images) && product.images[0]) {
+    return product.images[0];
+  }
+
+  if (product.image) {
+    return product.image;
+  }
+
+  if (product.imageUrl) {
+    return product.imageUrl;
+  }
+
+  return null;
+};
+
 export const normalizeWishlistProduct = (product) => ({
   _id: product._id,
   name: product.name,
   slug: product.slug,
-  image: product.images?.[0] || product.image || null,
+  image: resolveWishlistImage(product),
   price: product.price,
   discountPrice: product.discountPrice,
   brand: product.brand?.name || product.brand || null,
@@ -100,10 +116,13 @@ export const calculateGuestCartSummary = ({
   subtotal,
   deliveryZone = "inside-dhaka",
   promoCode = "",
+  deliverySettings = null,
 }) => {
-  const deliveryCharge =
-    subtotal >= 500 ? 0 : deliveryZone === "outside-dhaka" ? 120 : 60;
-  const vat = subtotal * 0.05;
+  const threshold = Number(deliverySettings?.freeDeliveryThreshold ?? 500);
+  const insideCharge = Number(deliverySettings?.insideDhakaCharge ?? 60);
+  const outsideCharge = Number(deliverySettings?.outsideDhakaCharge ?? 120);
+  const baseCharge = deliveryZone === "outside-dhaka" ? outsideCharge : insideCharge;
+  const deliveryCharge = threshold > 0 && subtotal >= threshold ? 0 : baseCharge;
 
   return {
     itemsSubtotal: subtotal,
@@ -111,12 +130,8 @@ export const calculateGuestCartSummary = ({
     discountedSubtotal: subtotal,
     deliveryZone,
     deliveryCharge,
-    freeDeliveryThreshold: 500,
-    vatRate: 0.05,
-    vat,
-    extraCharges: [],
-    extraChargeTotal: 0,
-    grandTotal: subtotal + deliveryCharge + vat,
+    freeDeliveryThreshold: threshold,
+    grandTotal: subtotal + deliveryCharge,
     voucherMessage: promoCode ? "Sign in to apply voucher codes" : "",
   };
 };

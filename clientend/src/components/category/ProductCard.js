@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { HiOutlineHeart, HiOutlineShoppingBag } from "react-icons/hi2";
@@ -26,10 +27,22 @@ export default function ProductCard({ product }) {
   const { isWishlisted, toggleWishlist } = useWishlist();
   const [isAdding, setIsAdding] = useState(false);
   const [message, setMessage] = useState("");
+  const [selectedVariantId, setSelectedVariantId] = useState(() => {
+    const firstAvailable =
+      product.variants?.find((variant) => !variant.isOutOfStock) || product.variants?.[0];
+    return firstAvailable?._id || "";
+  });
 
   const productId = product._id || null;
   const productSlug = product.slug || "";
   const isWishlistedNow = productId ? isWishlisted(productId) : false;
+  const selectedVariant =
+    product.variants?.find((variant) => variant._id === selectedVariantId) || null;
+  const displayPrice = selectedVariant?.price ?? product.price;
+  const displayStock = selectedVariant?.stockQuantity ?? product.stockQuantity ?? 0;
+  const isOutOfStock = selectedVariant
+    ? selectedVariant.isOutOfStock
+    : product.isOutOfStock;
 
   const handleWishlist = async (event) => {
     event.preventDefault();
@@ -57,13 +70,18 @@ export default function ProductCard({ product }) {
       return;
     }
 
+    if (product.hasVariants && !selectedVariantId) {
+      setMessage("Please select a size option");
+      return;
+    }
+
     setIsAdding(true);
     setMessage("");
 
     try {
       await addToCart({
         productId,
-        variantId: null,
+        variantId: selectedVariantId || null,
         quantity: 1,
       });
       setMessage("Added to cart");
@@ -92,7 +110,23 @@ export default function ProductCard({ product }) {
               </span>
             ))}
           </div>
-          <span className="text-6xl">{product.emoji}</span>
+          {product.imageUrl ? (
+            <Image
+              src={product.imageUrl}
+              alt={product.name}
+              fill
+              sizes="(max-width: 768px) 100vw, 33vw"
+              unoptimized
+              className="object-contain p-6"
+            />
+          ) : (
+            <span className="text-6xl">{product.emoji}</span>
+          )}
+          {isOutOfStock ? (
+            <span className="absolute right-4 top-4 rounded-full bg-red-600 px-3 py-1 text-xs font-black text-white">
+              Out of stock
+            </span>
+          ) : null}
         </div>
 
         <div className="p-5">
@@ -103,6 +137,38 @@ export default function ProductCard({ product }) {
             {product.name}
           </h3>
 
+          {product.variants?.length ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {product.variants.map((variant) => {
+                const isSelected = selectedVariantId === variant._id;
+
+                return (
+                  <button
+                    key={variant._id}
+                    type="button"
+                    disabled={variant.isOutOfStock}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setSelectedVariantId(variant._id);
+                    }}
+                    className={`rounded-full border px-3 py-1 text-xs font-black transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${
+                      isSelected
+                        ? "border-main bg-main text-white"
+                        : "border-neutral-200 bg-[#f4faf6] text-main hover:border-main/40"
+                    }`}
+                  >
+                    {variant.label}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
+          <p className="mt-2 text-sm font-semibold text-main/65">
+            {isOutOfStock ? "Out of stock" : `${displayStock} in stock`}
+          </p>
+
           <div className="mt-4 flex items-center gap-2 text-sm">
             <span className="text-accent">★★★★★</span>
             <span className="font-medium text-main/60">({product.ratingCount})</span>
@@ -110,7 +176,7 @@ export default function ProductCard({ product }) {
 
           <div className="mt-4 flex flex-wrap items-end gap-3">
             <span className="text-3xl font-black text-main">
-              {formatPrice(product.price)}
+              {formatPrice(displayPrice)}
             </span>
             {product.oldPrice ? (
               <span className="text-sm font-bold text-main/50 line-through">
@@ -143,11 +209,11 @@ export default function ProductCard({ product }) {
           <button
             type="button"
             onClick={handleAddToCart}
-            disabled={isAdding}
+            disabled={isAdding || isOutOfStock}
             className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-main text-base font-black text-white transition-colors hover:bg-main/90 disabled:cursor-not-allowed disabled:opacity-70"
           >
             <HiOutlineShoppingBag />
-            {isAdding ? "Adding..." : "Add"}
+            {isOutOfStock ? "Out of stock" : isAdding ? "Adding..." : "Add"}
           </button>
         </div>
 

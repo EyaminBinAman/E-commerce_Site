@@ -1,3 +1,5 @@
+import axios from "axios";
+
 import { getApiBaseUrl } from "@/lib/apiBaseUrl";
 
 const FETCH_TIMEOUT_MS = 8000;
@@ -23,25 +25,33 @@ export const getBannerImageUrl = (imageUrl) => {
   return `${getAssetOrigin()}${imageUrl.startsWith("/") ? imageUrl : `/${imageUrl}`}`;
 };
 
-export const mapBannerToSlide = (banner) => ({
-  id: banner._id,
-  src: getBannerImageUrl(banner.imageUrl),
-  alt: banner.altText || banner.name,
-  href: banner.linkUrl || null,
-});
-
-async function fetchWithTimeout(url) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-
-  try {
-    return await fetch(url, {
-      cache: "no-store",
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timeoutId);
+export const mapBannerToSlide = (banner) => {
+  if (!banner?.imageUrl) {
+    return null;
   }
+
+  return {
+    id: banner._id || banner.id,
+    src: getBannerImageUrl(banner.imageUrl),
+    alt: banner.altText || banner.name || "Banner",
+    href: banner.linkUrl || null,
+    slideNumber: Number(banner.slideNumber) || 0,
+  };
+};
+
+const sortBanners = (banners = []) =>
+  [...banners].sort(
+    (left, right) =>
+      Number(left.slideNumber) - Number(right.slideNumber) ||
+      new Date(left.createdAt || 0) - new Date(right.createdAt || 0)
+  );
+
+export async function fetchHeroBanners() {
+  return sortBanners(await fetchBanners("hero-banner"));
+}
+
+export async function fetchSliderBanners() {
+  return sortBanners(await fetchBanners("slider-banner"));
 }
 
 export async function fetchBanners(type) {
@@ -52,12 +62,13 @@ export async function fetchBanners(type) {
     }
 
     const query = params.toString();
-    const response = await fetchWithTimeout(
-      `${resolveApiBaseUrl()}/banners/get-banners${query ? `?${query}` : ""}`
+    const response = await axios.get(
+      `${resolveApiBaseUrl()}/banners/get-banners${query ? `?${query}` : ""}`,
+      { timeout: FETCH_TIMEOUT_MS }
     );
-    const data = await response.json();
+    const data = response.data;
 
-    if (!response.ok || !data.success) {
+    if (!data.success) {
       return [];
     }
 

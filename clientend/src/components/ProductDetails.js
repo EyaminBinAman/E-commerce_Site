@@ -5,18 +5,20 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   HiMinus,
+  HiHeart,
   HiOutlineHeart,
   HiOutlineShoppingBag,
+  HiOutlineStar,
   HiPlus,
   HiStar,
 } from "react-icons/hi2";
 
 import { useCart } from "@/components/CartProvider";
+import LoginPopover from "@/components/LoginPopover";
 import { useWishlist } from "@/components/WishlistProvider";
-import { apiRequest } from "@/lib/api";
-
-const apiOrigin =
-  process.env.NEXT_PUBLIC_API_ORIGIN || "http://localhost:3000";
+import { useAuth } from "@/context/AuthContext";
+import { getProductImageUrl } from "@/lib/productApi";
+import { getProductReviews, submitProductReview } from "@/lib/reviewApi";
 
 const formatPrice = (value) =>
   new Intl.NumberFormat("en-BD", {
@@ -25,17 +27,7 @@ const formatPrice = (value) =>
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 
-const getImageUrl = (src) => {
-  if (!src) {
-    return "/window.svg";
-  }
-
-  if (src.startsWith("http://") || src.startsWith("https://")) {
-    return src;
-  }
-
-  return `${apiOrigin}${src.startsWith("/") ? src : `/${src}`}`;
-};
+const getImageUrl = (src) => getProductImageUrl(src) || "/window.svg";
 
 const getFinalPrice = (product, selectedVariant) => {
   const basePrice =
@@ -43,7 +35,54 @@ const getFinalPrice = (product, selectedVariant) => {
   return Number(basePrice || 0) + Number(selectedVariant?.priceAdjustment || 0);
 };
 
-function QuantityControl({ quantity, setQuantity, disabled }) {
+const formatReviewDate = (value) => {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+};
+
+function StarRating({ value = 0, onChange, readOnly = false, size = "md" }) {
+  const sizeClass = size === "sm" ? "text-base" : "text-xl";
+  const stars = [1, 2, 3, 4, 5];
+
+  return (
+    <div className={`inline-flex items-center gap-1 ${sizeClass}`}>
+      {stars.map((star) => {
+        const filled = star <= value;
+        const Icon = filled ? HiStar : HiOutlineStar;
+
+        if (readOnly) {
+          return (
+            <Icon
+              key={star}
+              className={filled ? "text-accent" : "text-neutral-300"}
+              aria-hidden="true"
+            />
+          );
+        }
+
+        return (
+          <button
+            key={star}
+            type="button"
+            onClick={() => onChange?.(star)}
+            className="transition-transform duration-200 hover:scale-110"
+            aria-label={`Rate ${star} out of 5 stars`}
+          >
+            <Icon className={filled ? "text-accent" : "text-neutral-300"} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function QuantityControl({ quantity, setQuantity, disabled, maxQuantity }) {
   return (
     <div className="inline-flex h-12 items-center overflow-hidden rounded-full border border-neutral-200 bg-white">
       <button
@@ -60,8 +99,10 @@ function QuantityControl({ quantity, setQuantity, disabled }) {
       </span>
       <button
         type="button"
-        disabled={disabled}
-        onClick={() => setQuantity((current) => current + 1)}
+        disabled={disabled || quantity >= maxQuantity}
+        onClick={() =>
+          setQuantity((current) => Math.min(maxQuantity, current + 1))
+        }
         className="flex h-12 w-12 items-center justify-center text-main transition-colors duration-300 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:text-neutral-300"
         aria-label="Increase quantity"
       >
@@ -86,6 +127,7 @@ function RelatedProductCard({ product }) {
           alt={product.name}
           fill
           sizes="(max-width: 768px) 50vw, 25vw"
+          unoptimized
           className="object-contain p-4 transition-transform duration-300 group-hover:scale-105"
         />
       </div>
@@ -109,6 +151,7 @@ function RelatedProductCard({ product }) {
 export default function ProductDetails({ product, relatedProducts }) {
   const { addToCart } = useCart();
   const { isWishlisted, toggleWishlist } = useWishlist();
+  const { user } = useAuth();
   const images = product.images?.length ? product.images : [null];
   const [selectedImage, setSelectedImage] = useState(images[0]);
   const activeVariants = useMemo(
@@ -125,6 +168,25 @@ export default function ProductDetails({ product, relatedProducts }) {
   const [isAddingToCart, setIsAddingToCart] = useState(false);
   const [reviews, setReviews] = useState([]);
   const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [showReviewForm, setShowReviewForm] = useState(false);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState("");
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [reviewMessage, setReviewMessage] = useState("");
+  const [isLoginOpen, setIsLoginOpen] = useState(false);
+
+  useEffect(() => {
+    if (!activeVariants.length) {
+      setSelectedVariantId("");
+      return;
+    }
+
+    setSelectedVariantId((current) =>
+      activeVariants.some((variant) => variant._id === current)
+        ? current
+        : activeVariants[0]._id
+    );
+  }, [product._id, activeVariants]);
 
   const selectedVariant = activeVariants.find(
     (variant) => variant._id === selectedVariantId
@@ -132,21 +194,24 @@ export default function ProductDetails({ product, relatedProducts }) {
   const finalPrice = getFinalPrice(product, selectedVariant);
   const stockQuantity =
     selectedVariant?.stockQuantity ?? product.stockQuantity ?? 0;
-  const isOutOfStock = product.isOutOfStock || stockQuantity <= 0;
+  const isOutOfStock = activeVariants.length
+    ? !selectedVariant || Number(selectedVariant.stockQuantity || 0) <= 0
+    : product.isOutOfStock || stockQuantity <= 0;
   const hasDiscount = typeof product.discountPrice === "number";
   const productIsWishlisted = isWishlisted(product._id);
   const reviewCount = reviews.length;
   const averageRating = reviews.length
-    ? (reviews.reduce((sum, item) => sum + Number(item.rating || 0), 0) / reviews.length).toFixed(1)
-    : null;
+    ? reviews.reduce((sum, item) => sum + Number(item.rating || 0), 0) / reviews.length
+    : 0;
+  const roundedAverageRating = averageRating ? averageRating.toFixed(1) : null;
 
   useEffect(() => {
     let alive = true;
 
-    apiRequest(`/reviews/get-reviews?productId=${product._id}`)
-      .then((data) => {
-        if (!alive) return;
-        setReviews(data.reviews || []);
+    setReviewsLoading(true);
+    getProductReviews(product._id)
+      .then((nextReviews) => {
+        if (alive) setReviews(nextReviews);
       })
       .catch(() => {
         if (alive) setReviews([]);
@@ -196,6 +261,59 @@ export default function ProductDetails({ product, relatedProducts }) {
     }
   };
 
+  const handleOpenReviewForm = () => {
+    setReviewMessage("");
+    setActiveTab("reviews");
+
+    if (!user) {
+      setIsLoginOpen(true);
+      return;
+    }
+
+    setShowReviewForm((current) => !current);
+  };
+
+  const handleSubmitReview = async (event) => {
+    event.preventDefault();
+    setReviewMessage("");
+
+    if (!user) {
+      setIsLoginOpen(true);
+      return;
+    }
+
+    if (!reviewRating) {
+      setReviewMessage("Please select a star rating.");
+      return;
+    }
+
+    if (!reviewComment.trim()) {
+      setReviewMessage("Please write a short review.");
+      return;
+    }
+
+    setIsSubmittingReview(true);
+
+    try {
+      const review = await submitProductReview({
+        productId: product._id,
+        rating: reviewRating,
+        comment: reviewComment.trim(),
+      });
+
+      setReviews((current) => [review, ...current]);
+      setReviewRating(0);
+      setReviewComment("");
+      setShowReviewForm(false);
+      setReviewMessage("Thank you! Your review has been submitted.");
+      setActiveTab("reviews");
+    } catch (error) {
+      setReviewMessage(error.message || "Could not submit review");
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
   return (
     <>
       <nav className="flex flex-wrap items-center gap-2 text-sm text-neutral-500">
@@ -231,6 +349,7 @@ export default function ProductDetails({ product, relatedProducts }) {
               fill
               priority
               sizes="(max-width: 1024px) 100vw, 50vw"
+              unoptimized
               className="object-contain p-8"
             />
           </div>
@@ -254,6 +373,7 @@ export default function ProductDetails({ product, relatedProducts }) {
                     alt={product.name}
                     fill
                     sizes="96px"
+                    unoptimized
                     className="object-contain p-2"
                   />
                 </button>
@@ -280,21 +400,24 @@ export default function ProductDetails({ product, relatedProducts }) {
             {product.name}
           </h1>
 
-          <div className="mt-4 flex items-center gap-1 text-accent">
-            {[1, 2, 3, 4, 5].map((item) => (
-              <HiStar key={item} />
-            ))}
+          <div className="mt-4 flex items-center gap-1">
+            <StarRating value={Math.round(averageRating)} readOnly />
             <span className="ml-2 text-sm font-semibold text-neutral-500">
               {reviewCount
-                ? `${averageRating} out of 5 from ${reviewCount} reviews`
+                ? `${roundedAverageRating} out of 5 from ${reviewCount} review${reviewCount === 1 ? "" : "s"}`
                 : "No reviews yet"}
             </span>
           </div>
 
-          <div className="mt-6 flex flex-wrap items-end gap-3">
+          <div className="mt-4 flex flex-wrap items-end gap-3">
             <span className="text-3xl font-black text-main">
               {formatPrice(finalPrice)}
             </span>
+            {activeVariants.length ? (
+              <span className="pb-1 text-sm font-semibold text-neutral-500">
+                Selected option price
+              </span>
+            ) : null}
             {hasDiscount ? (
               <span className="pb-1 text-xl font-semibold text-neutral-400 line-through">
                 {formatPrice(product.price)}
@@ -322,22 +445,36 @@ export default function ProductDetails({ product, relatedProducts }) {
 
             {activeVariants.length ? (
               <div>
-                <p className="text-sm font-bold text-neutral-900">Options</p>
+                <p className="text-sm font-bold text-neutral-900">Choose size / weight</p>
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {activeVariants.map((variant) => (
-                    <button
-                      key={variant._id}
-                      type="button"
-                      onClick={() => setSelectedVariantId(variant._id)}
-                      className={`rounded-full border px-4 py-2 text-sm font-bold transition-all duration-300 ${
-                        selectedVariantId === variant._id
-                          ? "border-main bg-main text-white"
-                          : "border-neutral-200 text-neutral-700 hover:border-main hover:text-main"
-                      }`}
-                    >
-                      {variant.value || variant.name || variant.sku}
-                    </button>
-                  ))}
+            {activeVariants.map((variant) => {
+              const variantPrice = getFinalPrice(product, variant);
+              const variantStock = Number(variant.stockQuantity || 0);
+              const variantOutOfStock = variantStock <= 0;
+
+              return (
+                <button
+                  key={variant._id}
+                  type="button"
+                      onClick={() => {
+                        setSelectedVariantId(variant._id);
+                        setQuantity(1);
+                      }}
+                  disabled={variantOutOfStock}
+                  className={`rounded-full border px-4 py-2 text-sm font-bold transition-all duration-300 disabled:cursor-not-allowed disabled:opacity-50 ${
+                    selectedVariantId === variant._id
+                      ? "border-main bg-main text-white"
+                      : "border-neutral-200 text-neutral-700 hover:border-main hover:text-main"
+                  }`}
+                >
+                  <span>{variant.value || variant.name || variant.sku}</span>
+                  <span className="ml-2">{formatPrice(variantPrice)}</span>
+                  <span className="ml-2 text-xs opacity-80">
+                    ({variantOutOfStock ? "Out of stock" : `${variantStock} left`})
+                  </span>
+                </button>
+              );
+            })}
                 </div>
               </div>
             ) : null}
@@ -347,6 +484,7 @@ export default function ProductDetails({ product, relatedProducts }) {
                 quantity={quantity}
                 setQuantity={setQuantity}
                 disabled={isOutOfStock}
+                maxQuantity={Math.max(stockQuantity, 1)}
               />
               <button
                 type="button"
@@ -360,10 +498,18 @@ export default function ProductDetails({ product, relatedProducts }) {
               <button
                 type="button"
                 onClick={handleToggleWishlist}
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-full border border-neutral-200 px-5 text-sm font-black text-main transition-all duration-300 hover:border-main hover:bg-main hover:text-white"
+                className={`inline-flex h-12 items-center justify-center gap-2 rounded-full border px-5 text-sm font-black transition-all duration-300 ${
+                  productIsWishlisted
+                    ? "border-main bg-main text-white"
+                    : "border-neutral-200 text-main hover:border-main hover:bg-main hover:text-white"
+                }`}
               >
-                <HiOutlineHeart className="text-lg" />
-                {productIsWishlisted ? "Wishlisted" : "Wishlist"}
+                {productIsWishlisted ? (
+                  <HiHeart className="text-lg" />
+                ) : (
+                  <HiOutlineHeart className="text-lg" />
+                )}
+                Wishlist
               </button>
             </div>
             {cartMessage ? (
@@ -468,11 +614,87 @@ export default function ProductDetails({ product, relatedProducts }) {
 
           {activeTab === "reviews" ? (
             <div className="max-w-2xl rounded-lg border border-neutral-200 p-5">
-              <h2 className="text-xl font-black text-neutral-950">Reviews</h2>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-black text-neutral-950">Reviews</h2>
+                  {reviewCount ? (
+                    <div className="mt-2 flex items-center gap-2">
+                      <StarRating value={Math.round(averageRating)} readOnly size="sm" />
+                      <span className="text-sm font-semibold text-neutral-500">
+                        {roundedAverageRating} average from {reviewCount} review
+                        {reviewCount === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleOpenReviewForm}
+                  className="rounded-full border border-main px-5 py-2.5 text-sm font-black text-main transition-all duration-300 hover:bg-main hover:text-white"
+                >
+                  {showReviewForm ? "Cancel" : "Add a review"}
+                </button>
+              </div>
+
+              {reviewMessage ? (
+                <p
+                  className={`mt-4 text-sm font-semibold ${
+                    reviewMessage.startsWith("Thank you")
+                      ? "text-emerald-700"
+                      : "text-red-600"
+                  }`}
+                >
+                  {reviewMessage}
+                </p>
+              ) : null}
+
+              {showReviewForm && user ? (
+                <form
+                  onSubmit={handleSubmitReview}
+                  className="mt-5 rounded-lg border border-neutral-200 bg-neutral-50 p-4"
+                >
+                  <p className="text-sm font-bold text-neutral-900">Your rating</p>
+                  <div className="mt-2">
+                    <StarRating value={reviewRating} onChange={setReviewRating} />
+                  </div>
+
+                  <label className="mt-4 block text-sm font-bold text-neutral-900">
+                    Your review
+                    <textarea
+                      value={reviewComment}
+                      onChange={(event) => setReviewComment(event.target.value)}
+                      rows={4}
+                      maxLength={500}
+                      placeholder="Share your experience with this product..."
+                      className="mt-2 w-full resize-none rounded-lg border border-neutral-200 bg-white px-4 py-3 text-sm leading-6 text-neutral-700 outline-none transition-colors duration-300 focus:border-main"
+                    />
+                  </label>
+
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-xs font-medium text-neutral-500">
+                      {reviewComment.length}/500 characters
+                    </span>
+                    <button
+                      type="submit"
+                      disabled={isSubmittingReview}
+                      className="rounded-full bg-main px-6 py-2.5 text-sm font-black text-white transition-all duration-300 hover:bg-main/90 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {isSubmittingReview ? "Submitting..." : "Submit review"}
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+
+              {!user ? (
+                <p className="mt-4 text-sm text-neutral-600">
+                  Please log in to share your review.
+                </p>
+              ) : null}
+
               {reviewsLoading ? (
-                <p className="mt-3 text-neutral-600">Loading reviews...</p>
+                <p className="mt-5 text-neutral-600">Loading reviews...</p>
               ) : reviews.length ? (
-                <div className="mt-4 space-y-4">
+                <div className="mt-5 space-y-4">
                   {reviews.map((review) => (
                     <article key={review._id} className="rounded-lg border border-neutral-200 p-4">
                       <div className="flex items-start justify-between gap-4">
@@ -480,20 +702,26 @@ export default function ProductDetails({ product, relatedProducts }) {
                           <p className="text-sm font-black text-neutral-950">
                             {review.customerName}
                           </p>
-                          <p className="mt-1 text-xs font-semibold text-neutral-500">
-                            {review.rating}/5 stars
-                          </p>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <StarRating
+                              value={Number(review.rating || 0)}
+                              readOnly
+                              size="sm"
+                            />
+                            {review.createdAt ? (
+                              <span className="text-xs font-medium text-neutral-500">
+                                {formatReviewDate(review.createdAt)}
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
-                        <span className="rounded-full bg-main/10 px-3 py-1 text-xs font-black text-main">
-                          {review.status}
-                        </span>
                       </div>
                       <p className="mt-3 text-sm leading-6 text-neutral-600">
                         {review.comment}
                       </p>
                       {review.reply ? (
                         <div className="mt-3 rounded-md bg-mainSoft/40 p-3 text-sm text-main">
-                          <p className="font-black">Reply</p>
+                          <p className="font-black">Store reply</p>
                           <p className="mt-1 leading-6">{review.reply}</p>
                         </div>
                       ) : null}
@@ -501,7 +729,7 @@ export default function ProductDetails({ product, relatedProducts }) {
                   ))}
                 </div>
               ) : (
-                <p className="mt-3 text-neutral-600">There are no reviews yet.</p>
+                <p className="mt-5 text-neutral-600">There are no reviews yet.</p>
               )}
             </div>
           ) : null}
@@ -528,6 +756,17 @@ export default function ProductDetails({ product, relatedProducts }) {
           </div>
         </section>
       ) : null}
+
+      <LoginPopover
+        open={isLoginOpen}
+        onClose={() => setIsLoginOpen(false)}
+        onSuccess={() => {
+          setIsLoginOpen(false);
+          setActiveTab("reviews");
+          setShowReviewForm(true);
+        }}
+        description="Log in to share your experience with this product."
+      />
     </>
   );
 }

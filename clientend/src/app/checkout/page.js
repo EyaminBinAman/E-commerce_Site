@@ -65,8 +65,8 @@ const mapSavedAddressToShipping = (address) => ({
   phone: address.phone || "",
   city: address.city || "",
   area: address.area || "",
-  address: address.line || "",
-  postalCode: address.postal || "",
+  address: address.line || address.address || "",
+  postalCode: address.postal || address.postalCode || "",
 });
 
 export default function CheckoutPage() {
@@ -86,7 +86,8 @@ export default function CheckoutPage() {
   const [summary, setSummary] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState("COD");
   const [shipping, setShipping] = useState(emptyShipping);
-  const [selectedAddressId, setSelectedAddressId] = useState("");
+  const [selectedAddressId, setSelectedAddressId] = useState(null);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -98,12 +99,16 @@ export default function CheckoutPage() {
     if (!loaded) return;
 
     if (!user) {
+      setProfileLoaded(true);
       setIsLoginOpen(true);
       return;
     }
 
-    refreshUser().catch(() => undefined);
-    fetchCart().catch(() => undefined);
+    setProfileLoaded(false);
+
+    Promise.all([refreshUser(), fetchCart()])
+      .catch(() => undefined)
+      .finally(() => setProfileLoaded(true));
   }, [fetchCart, loaded, refreshUser, user?.id]);
 
   useEffect(() => {
@@ -118,28 +123,36 @@ export default function CheckoutPage() {
   }, [calculateCart, cartItems.length, prefs.deliveryZone, prefs.promoCode, user?.id]);
 
   useEffect(() => {
-    if (!user || selectedAddressId || !savedAddresses.length) return;
+    if (!user || !profileLoaded || selectedAddressId !== null) return;
 
-    const initialAddress = defaultAddress || savedAddresses[0];
-    setSelectedAddressId(initialAddress.id);
-    setShipping(mapSavedAddressToShipping(initialAddress));
-  }, [defaultAddress, savedAddresses, selectedAddressId, user?.id]);
+    if (savedAddresses.length) {
+      const initialAddress = defaultAddress || savedAddresses[0];
+      setSelectedAddressId(initialAddress.id);
+      setShipping(mapSavedAddressToShipping(initialAddress));
+      return;
+    }
 
-  useEffect(() => {
-    if (!user) return;
-    setShipping((current) => ({
-      ...current,
-      name: current.name || user.fullName || "",
-      phone: current.phone || user.phone || "",
-    }));
-  }, [user?.fullName, user?.phone, user?.id]);
+    setSelectedAddressId("");
+    setShipping({
+      ...emptyShipping,
+      name: user.fullName || "",
+      phone: user.phone || "",
+    });
+  }, [
+    defaultAddress,
+    profileLoaded,
+    savedAddresses,
+    selectedAddressId,
+    user?.fullName,
+    user?.id,
+    user?.phone,
+  ]);
 
   const displaySummary = summary || {
     itemsSubtotal: cartSubtotal,
     voucherDiscount: 0,
     discountedSubtotal: cartSubtotal,
     deliveryCharge: 0,
-    vat: 0,
     grandTotal: cartSubtotal,
   };
 
@@ -196,6 +209,7 @@ export default function CheckoutPage() {
         })),
         paymentMethod,
         shippingAddress: shipping,
+        deliveryZone: prefs.deliveryZone,
         ...(prefs.promoCode ? { promoCode: prefs.promoCode } : {}),
       };
 
@@ -222,7 +236,7 @@ export default function CheckoutPage() {
     }
   };
 
-  if (!loaded || (user && isLoading)) {
+  if (!loaded || (user && (!profileLoaded || isLoading))) {
     return (
       <main className="bg-white">
         <Container className="py-8 lg:py-12">
@@ -298,7 +312,7 @@ export default function CheckoutPage() {
                     Saved address
                   </h2>
                   <select
-                    value={selectedAddressId}
+                    value={selectedAddressId ?? ""}
                     onChange={(event) => handleAddressSelect(event.target.value)}
                     className="mt-3 h-11 w-full rounded-lg border border-neutral-200 bg-white px-3 text-sm font-semibold text-neutral-700 outline-none transition-colors duration-300 focus:border-main"
                   >
@@ -483,19 +497,16 @@ export default function CheckoutPage() {
                   </div>
                 ) : null}
                 <div className="flex items-center justify-between">
-                  <span className="text-neutral-600">Delivery</span>
+                  <span className="text-neutral-600">
+                    Delivery
+                    {prefs.deliveryZone === "outside-dhaka"
+                      ? " (Outside Dhaka)"
+                      : " (Inside Dhaka)"}
+                  </span>
                   <span className="font-black text-neutral-950">
                     {formatPrice(displaySummary.deliveryCharge)}
                   </span>
                 </div>
-                {displaySummary.vat > 0 ? (
-                  <div className="flex items-center justify-between">
-                    <span className="text-neutral-600">VAT</span>
-                    <span className="font-black text-neutral-950">
-                      {formatPrice(displaySummary.vat)}
-                    </span>
-                  </div>
-                ) : null}
               </div>
 
               <div className="mt-5 flex items-center justify-between text-lg">

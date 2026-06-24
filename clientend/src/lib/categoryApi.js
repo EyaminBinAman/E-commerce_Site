@@ -1,49 +1,27 @@
-import { animals as fallbackAnimals } from "@/data/categoryPageData";
+import axios from "axios";
+
+import { slugifyCategory, getAnimalGroupKeys } from "@/lib/catalogUtils";
+import { getAssetOrigin } from "@/lib/bannerApi";
 
 const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
-const emojiBySlug = {
-  dog: "🐶",
-  dogs: "🐶",
-  cat: "🐱",
-  cats: "🐱",
-  fish: "🐠",
-  bird: "🦜",
-  birds: "🦜",
-  rabbit: "🐰",
-  "small-pets": "🐹",
-  pharmacy: "💊",
-};
-
-const descBySlug = {
-  dog: "Dog-first shopping for food, toys, grooming, beds, travel and health.",
-  cat: "Everything for cats, from daily food and litter to toys and wellness essentials.",
-  fish: "Aquarium care, filters, tanks, food and water treatment for healthy fishkeeping.",
-  birds: "Bird cages, food, treats, perches, toys and care supplies for everyday comfort.",
-  rabbit: "Rabbit nutrition, hay, bedding, habitats and comfort essentials.",
-};
-
-const titleCase = (value = "") =>
-  value
-    .toString()
-    .split(" ")
-    .filter(Boolean)
-    .map((word) => word[0].toUpperCase() + word.slice(1).toLowerCase())
-    .join(" ");
-
 const FETCH_TIMEOUT_MS = 5000;
+
+export function resolveCatalogImageUrl(imagePath) {
+  if (!imagePath) return null;
+  if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+    return imagePath;
+  }
+  return `${getAssetOrigin()}${imagePath.startsWith("/") ? imagePath : `/${imagePath}`}`;
+}
 
 export async function getAnimalsFromApi() {
   try {
-    const response = await fetch(`${apiBaseUrl}/animals/get-animals`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    const response = await axios.get(`${apiBaseUrl}/animals/get-animals`, {
+      timeout: FETCH_TIMEOUT_MS,
     });
-    if (!response.ok) {
-      throw new Error("Failed to load animals");
-    }
-    const data = await response.json();
+    const data = response.data;
     if (!data.success) {
       throw new Error(data.message || "Failed to load animals");
     }
@@ -55,14 +33,10 @@ export async function getAnimalsFromApi() {
 
 export async function getCategoriesFromApi() {
   try {
-    const response = await fetch(`${apiBaseUrl}/categories/get-categories`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    const response = await axios.get(`${apiBaseUrl}/categories/get-categories`, {
+      timeout: FETCH_TIMEOUT_MS,
     });
-    if (!response.ok) {
-      throw new Error("Failed to load categories");
-    }
-    const data = await response.json();
+    const data = response.data;
     if (!data.success) {
       throw new Error(data.message || "Failed to load categories");
     }
@@ -78,10 +52,6 @@ export async function getCategoryAnimalsView() {
     getCategoriesFromApi(),
   ]);
 
-  if (!animals.length) {
-    return fallbackAnimals;
-  }
-
   const groupedCategories = categories.reduce((acc, item) => {
     const key = (item.animalName || "").trim().toLowerCase();
     if (!key) return acc;
@@ -89,51 +59,54 @@ export async function getCategoryAnimalsView() {
     acc[key].push({
       name: item.name,
       slug: item.slug,
+      icon: item.icon || "🐾",
+      image: item.image || null,
     });
     return acc;
   }, {});
 
-  // API returns newest first; show oldest first so the landing animal stays stable.
   const orderedAnimals = [...animals].sort(
     (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)
   );
 
-  const normalized = orderedAnimals.map((animal) => {
-    const rawName = titleCase(animal.name || "Pet");
-    const slug = animal.slug || rawName.toLowerCase();
-    const groupKey = rawName.toLowerCase();
-    const categoryList = groupedCategories[groupKey] || [];
-
+  return orderedAnimals.map((animal) => {
+    const rawName = animal.name || "Pet";
+    const slug = animal.slug || slugifyCategory(rawName);
+    const categoryList = getAnimalGroupKeys(rawName).flatMap(
+      (key) => groupedCategories[key] || []
+    );
+    const uniqueCategories = categoryList.filter(
+      (item, index, list) =>
+        list.findIndex((entry) => entry.slug === item.slug) === index
+    );
     const allLabel = `All ${rawName}`;
 
     return {
       name: rawName,
       slug,
-      icon: emojiBySlug[slug] || emojiBySlug[groupKey] || "🐾",
-      description:
-        descBySlug[slug] ||
-        descBySlug[groupKey] ||
-        `${rawName} essentials, nutrition, toys and care products in one place.`,
-      categories: [allLabel, ...categoryList.map((item) => item.name)],
+      icon: animal.icon || "🐾",
+      image: animal.image || null,
+      imageUrl: resolveCatalogImageUrl(animal.image),
+      description: animal.description || "",
+      categories: [allLabel, ...uniqueCategories.map((item) => item.name)],
       categoryDetails: [
-        { name: allLabel, slug: null, isAll: true },
-        ...categoryList.map((item) => ({
+        { name: allLabel, slug: null, isAll: true, icon: animal.icon || "🐾", image: animal.image || null },
+        ...uniqueCategories.map((item) => ({
           name: item.name,
           slug: item.slug,
+          icon: item.icon || "🐾",
+          image: item.image || null,
           isAll: false,
         })),
       ],
     };
   });
-
-  return normalized.length ? normalized : fallbackAnimals;
 }
 
 export function findAnimalBySlug(animals, animalSlug = "") {
   const target = animalSlug.toString().trim().toLowerCase();
   if (!target) return null;
 
-  // Tolerate singular/plural differences, e.g. "/categories/dogs" vs slug "dog".
   const variants = new Set([target]);
   if (target.endsWith("s")) variants.add(target.slice(0, -1));
   else variants.add(`${target}s`);

@@ -1,21 +1,40 @@
+import axios from "axios";
+
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api/v1";
 
-async function fetchJson(path, options = {}) {
-  const method = (options.method || "GET").toUpperCase();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    cache: method === "GET" ? "no-store" : undefined,
-    credentials: "include",
+export const apiClient = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: true,
+  validateStatus: () => true,
+});
+
+function buildAxiosConfig(options = {}) {
+  const { body, headers, signal, method = "GET", ...rest } = options;
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+
+  return {
+    method,
     headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
+      ...(headers || {}),
     },
-    ...options,
-  });
+    data: isFormData || typeof body !== "string" ? body : body ? JSON.parse(body) : undefined,
+    signal,
+    ...rest,
+  };
+}
 
-  const data = await response.json().catch(() => ({}));
+async function fetchJson(path, options = {}) {
+  const response = await apiClient(path, buildAxiosConfig(options));
 
-  return { response, data };
+  return {
+    response: {
+      ok: response.status >= 200 && response.status < 300,
+      status: response.status,
+    },
+    data: response.data || {},
+  };
 }
 
 export async function apiRequest(path, options = {}) {
@@ -37,7 +56,9 @@ export async function apiRequest(path, options = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(data.message || "Request failed");
+    const error = new Error(data.message || "Request failed");
+    error.status = response.status;
+    throw error;
   }
 
   return data;

@@ -4,6 +4,7 @@ const Product = require("../../models/Product");
 const Category = require("../../models/Category");
 const Animal = require("../../models/Animal");
 const Brand = require("../../models/Brand");
+const { deleteImageFile } = require("../../utils/imageFiles");
 
 const parseBoolean = (value) => {
   if (typeof value === "boolean") return value;
@@ -31,6 +32,22 @@ const normalizeStringArray = (value) => {
   return [];
 };
 
+const getUploadedProductImagePaths = (req) =>
+  (req.files || []).map((file) => `/uploads/products/${file.filename}`);
+
+const cleanupUploadedFiles = (req) => {
+  getUploadedProductImagePaths(req).forEach((imagePath) => {
+    deleteImageFile(imagePath, "products");
+  });
+};
+
+const mergeProductImages = (req, imagesValue, existingImagesValue) => {
+  const uploaded = getUploadedProductImagePaths(req);
+  const fromBody = normalizeStringArray(imagesValue);
+  const existing = normalizeStringArray(existingImagesValue);
+  return [...new Set([...existing, ...uploaded, ...fromBody])];
+};
+
 const normalizeVariants = (value) => {
   let variants = value;
 
@@ -44,23 +61,33 @@ const normalizeVariants = (value) => {
 
   if (!Array.isArray(variants)) return [];
 
-  return variants.map((variant) => ({
-    name: variant?.name || null,
-    value: variant?.value || null,
-    sku: variant?.sku || null,
-    priceAdjustment:
-      typeof variant?.priceAdjustment === "number"
-        ? variant.priceAdjustment
-        : Number(variant?.priceAdjustment || 0),
-    stockQuantity:
-      typeof variant?.stockQuantity === "number"
-        ? variant.stockQuantity
-        : Number(variant?.stockQuantity || 0),
-    isActive:
-      typeof variant?.isActive === "boolean"
-        ? variant.isActive
-        : parseBoolean(variant?.isActive) ?? true,
-  }));
+  return variants
+    .map((variant) => {
+      const value = variant?.value || variant?.label || null;
+      if (!value) return null;
+
+      return {
+        ...(mongoose.Types.ObjectId.isValid(variant?._id)
+          ? { _id: variant._id }
+          : {}),
+        name: variant?.name || "Size",
+        value,
+        sku: variant?.sku || null,
+        priceAdjustment:
+          typeof variant?.priceAdjustment === "number"
+            ? variant.priceAdjustment
+            : Number(variant?.priceAdjustment || 0),
+        stockQuantity:
+          typeof variant?.stockQuantity === "number"
+            ? variant.stockQuantity
+            : Number(variant?.stockQuantity || 0),
+        isActive:
+          typeof variant?.isActive === "boolean"
+            ? variant.isActive
+            : parseBoolean(variant?.isActive) ?? true,
+      };
+    })
+    .filter(Boolean);
 };
 
 const validateObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
@@ -301,10 +328,14 @@ const getSingleProduct = async (req, res, next) => {
   try {
     const { slug } = req.params;
 
+    const includeInactive = ["1", "true", "yes"].includes(
+      String(req.query.includeInactive || "").toLowerCase()
+    );
+
     const product = await Product.findOne({
       slug,
       isDeleted: false,
-      isActive: true,
+      ...(includeInactive ? {} : { isActive: true }),
     })
       .populate("category", "name slug")
       .populate("animal", "name slug")
@@ -354,10 +385,12 @@ const createProduct = async (req, res, next) => {
       isOfferEnabled,
       tags,
       images,
+      existingImages,
       variants,
     } = req.body;
 
     if (!name || !description || !category || !brand || price === undefined) {
+      cleanupUploadedFiles(req);
       return res.status(400).json({
         success: false,
         message: "Name, description, category, brand, and price are required",
@@ -365,6 +398,7 @@ const createProduct = async (req, res, next) => {
     }
 
     if (stockQuantity === undefined || Number(stockQuantity) < 0) {
+      cleanupUploadedFiles(req);
       return res.status(400).json({
         success: false,
         message: "A valid stockQuantity is required",
@@ -373,6 +407,7 @@ const createProduct = async (req, res, next) => {
 
     const resolvedCategory = await resolveCategoryRef(category);
     if (!resolvedCategory) {
+      cleanupUploadedFiles(req);
       return res.status(400).json({
         success: false,
         message: "Valid category (id, slug, or name) is required",
@@ -383,6 +418,7 @@ const createProduct = async (req, res, next) => {
 
     const resolvedBrand = await resolveBrandRef(brand);
     if (!resolvedBrand) {
+      cleanupUploadedFiles(req);
       return res.status(400).json({
         success: false,
         message: "Valid brand (id, slug, or name) is required",
@@ -395,6 +431,7 @@ const createProduct = async (req, res, next) => {
     });
 
     if (existingProductByName) {
+      cleanupUploadedFiles(req);
       return res.status(400).json({
         success: false,
         message: "Product with this name already exists",
@@ -403,6 +440,7 @@ const createProduct = async (req, res, next) => {
 
     const normalizedVariants = normalizeVariants(variants);
     if (normalizedVariants === null) {
+      cleanupUploadedFiles(req);
       return res.status(400).json({
         success: false,
         message: "variants must be a valid JSON array",
@@ -416,6 +454,7 @@ const createProduct = async (req, res, next) => {
         : Number(discountPrice);
 
     if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+      cleanupUploadedFiles(req);
       return res.status(400).json({
         success: false,
         message: "Valid price is required",
@@ -428,6 +467,7 @@ const createProduct = async (req, res, next) => {
         parsedDiscountPrice < 0 ||
         parsedDiscountPrice >= parsedPrice)
     ) {
+      cleanupUploadedFiles(req);
       return res.status(400).json({
         success: false,
         message: "discountPrice must be lower than price",
@@ -447,7 +487,7 @@ const createProduct = async (req, res, next) => {
       isFeatured: parseBoolean(isFeatured) ?? false,
       isOfferEnabled: parseBoolean(isOfferEnabled) ?? false,
       tags: normalizeStringArray(tags),
-      images: normalizeStringArray(images),
+      images: mergeProductImages(req, images),
       variants: normalizedVariants,
     });
 
@@ -461,6 +501,7 @@ const createProduct = async (req, res, next) => {
       product: populatedProduct,
     });
   } catch (error) {
+    cleanupUploadedFiles(req);
     next(error);
   }
 };
@@ -482,6 +523,7 @@ const updateProduct = async (req, res, next) => {
       isOfferEnabled,
       tags,
       images,
+      existingImages,
       variants,
     } = req.body;
 
@@ -491,6 +533,7 @@ const updateProduct = async (req, res, next) => {
     });
 
     if (!product) {
+      cleanupUploadedFiles(req);
       return res.status(404).json({
         success: false,
         message: "Product not found",
@@ -616,8 +659,13 @@ const updateProduct = async (req, res, next) => {
       product.tags = normalizeStringArray(tags);
     }
 
-    if (images !== undefined) {
-      product.images = normalizeStringArray(images);
+    if (images !== undefined || existingImages !== undefined || req.files?.length) {
+      const nextImages = mergeProductImages(req, images, existingImages);
+      const removedImages = (product.images || []).filter(
+        (imagePath) => !nextImages.includes(imagePath)
+      );
+      removedImages.forEach((imagePath) => deleteImageFile(imagePath, "products"));
+      product.images = nextImages;
     }
 
     if (variants !== undefined) {
@@ -644,6 +692,7 @@ const updateProduct = async (req, res, next) => {
       product: updatedProduct,
     });
   } catch (error) {
+    cleanupUploadedFiles(req);
     next(error);
   }
 };

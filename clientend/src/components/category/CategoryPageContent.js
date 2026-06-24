@@ -1,64 +1,9 @@
 import Container from "@/components/Container";
+import Image from "next/image";
 import CategorySidebar from "@/components/category/CategorySidebar";
 import ProductCard from "@/components/category/ProductCard";
-import { getSubcategoryBySlug, slugifyCategory } from "@/data/categoryPageData";
-import { products as fallbackProducts } from "@/data/categoryPageData";
-
-const emojiByAnimal = {
-  dog: "🐶",
-  dogs: "🐶",
-  cat: "🐱",
-  cats: "🐱",
-  fish: "🐠",
-  bird: "🦜",
-  birds: "🦜",
-  rabbit: "🐹",
-  "small-pets": "🐹",
-};
-
-function normalizeProduct(product, animalSlug) {
-  const originalPrice = Number(product.price ?? 0);
-  const discountPrice = Number(product.discountPrice);
-  const hasDiscount =
-    Number.isFinite(discountPrice) && discountPrice > 0 && discountPrice < originalPrice;
-  const categoryName = product.category?.name || product.subcategory || product.category || "";
-  const categorySlug =
-    product.category?.slug || slugifyCategory(categoryName || product.subcategory || "");
-  const activeAnimal = product.animal?.slug || product.animal || product.category || animalSlug;
-
-  return {
-    _id: product._id,
-    slug:
-      product.slug ||
-      String(product.name || "product")
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, ""),
-    name: product.name,
-    brand: product.brand?.name || product.brand || "",
-    animal: activeAnimal,
-    category: {
-      name: categoryName || animalSlug,
-      slug: categorySlug || animalSlug,
-    },
-    subcategory: categoryName || "",
-    emoji: product.emoji || emojiByAnimal[animalSlug] || "🐾",
-    price: hasDiscount ? discountPrice : originalPrice,
-    oldPrice: hasDiscount ? originalPrice : null,
-    discount: hasDiscount
-      ? `${Math.max(1, Math.round(((originalPrice - discountPrice) / originalPrice) * 100))}% off`
-      : null,
-    ratingCount: product.ratingCount || "0",
-    badges: product.badges?.length
-      ? product.badges
-      : [
-          product.isFeatured ? "New" : null,
-          product.isOfferEnabled ? "Sale" : null,
-          product.isOutOfStock ? "Autoship" : null,
-        ].filter(Boolean),
-  };
-}
+import { getSubcategoryBySlug } from "@/lib/catalogUtils";
+import { resolveCatalogImageUrl } from "@/lib/categoryApi";
 
 export default function CategoryPageContent({
   animal,
@@ -66,25 +11,16 @@ export default function CategoryPageContent({
   products = [],
   brands = [],
 }) {
-  const catalogProducts = products.length ? products : fallbackProducts;
-  const displayProducts = catalogProducts.map((product) =>
-    normalizeProduct(product, animal.slug)
-  );
   const activeSubcategory = getSubcategoryBySlug(animal, subcategorySlug);
   const isAllCategory = activeSubcategory === animal.categories[0];
-  const relevantProducts = displayProducts.filter(
-    (product) =>
-      (product.animal?.slug || product.animal === animal.slug) &&
-      (isAllCategory ||
-        slugifyCategory(product.category?.name || product.subcategory || "") ===
-          slugifyCategory(activeSubcategory))
+  const activeCategory = animal.categoryDetails?.find(
+    (item) => !item.isAll && item.name === activeSubcategory
   );
-  const visibleProducts =
-    relevantProducts.length > 0
-      ? relevantProducts
-      : displayProducts
-          .filter((product) => (product.animal?.slug || product.animal) === animal.slug)
-          .slice(0, 6);
+  const heroIcon = isAllCategory
+    ? animal.icon || "🐾"
+    : activeCategory?.icon || animal.icon || "🐾";
+  const heroImage = isAllCategory ? animal.image || null : activeCategory?.image || null;
+  const heroImageUrl = resolveCatalogImageUrl(heroImage);
 
   return (
     <main className="bg-[#fbf7f1]">
@@ -118,7 +54,7 @@ export default function CategoryPageContent({
                   </h1>
                   <p className="mt-5 max-w-3xl text-lg font-medium leading-8 text-white/85">
                     {isAllCategory
-                      ? animal.description
+                      ? animal.description || `Browse ${animal.name.toLowerCase()} products.`
                       : `Browse ${activeSubcategory.toLowerCase()} with focused filters and relevant products for ${animal.name.toLowerCase()}.`}
                   </p>
                   <div className="mt-7 flex flex-wrap gap-3">
@@ -133,7 +69,20 @@ export default function CategoryPageContent({
                   </div>
                 </div>
                 <span className="absolute right-10 top-1/2 hidden -translate-y-1/2 text-8xl sm:block">
-                  {animal.icon}
+                  {heroImageUrl ? (
+                    <span className="flex h-36 w-36 items-center justify-center overflow-hidden rounded-full bg-white/10">
+                      <Image
+                        src={heroImageUrl}
+                        alt={animal.name}
+                        width={144}
+                        height={144}
+                        unoptimized
+                        className="h-full w-full object-cover"
+                      />
+                    </span>
+                  ) : (
+                    heroIcon
+                  )}
                 </span>
               </div>
             </div>
@@ -144,7 +93,7 @@ export default function CategoryPageContent({
                   {isAllCategory ? animal.name : activeSubcategory} products
                 </h2>
                 <p className="mt-1 text-lg font-medium text-main/65">
-                  {visibleProducts.length} products available
+                  {products.length} products available
                 </p>
               </div>
 
@@ -156,9 +105,9 @@ export default function CategoryPageContent({
               </select>
             </div>
 
-            {visibleProducts.length > 0 ? (
+            {products.length > 0 ? (
               <div className="mt-7 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-                {visibleProducts.map((product) => (
+                {products.map((product) => (
                   <ProductCard
                     key={product.slug || product._id || `${product.brand}-${product.name}`}
                     product={product}

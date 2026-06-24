@@ -1,32 +1,32 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import DashboardShell from "@/components/DashboardShell";
 import { getApiBaseUrl } from "@/lib/apiBaseUrl";
-import { useToast } from "@/components/ui/toast";
 import { adminApi } from "@/lib/adminApi";
+import { useToast } from "@/components/ui/toast";
 
 const suggestedCategories = ["Dog Food", "Dog Litter", "Dog Treat", "Dog Toys"];
-const REQUEST_TIMEOUT_MS = 12000;
-
-const fetchWithTimeout = async (url, options = {}) => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    return await fetch(url, { credentials: "include", ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-};
 
 const getApiErrorMessage = (error, fallback) => {
   if (error?.name === "AbortError") {
     return "Backend request timeout. Please verify backend is running on port 3000.";
   }
   return error?.message || fallback;
+};
+
+const getAssetOrigin = (apiBaseUrl) => apiBaseUrl.replace(/\/api\/v1\/?$/, "");
+
+const resolveImageUrl = (apiBaseUrl, imagePath) => {
+  if (!imagePath) return "";
+  if (imagePath.startsWith("http://") || imagePath.startsWith("https://")) {
+    return imagePath;
+  }
+  return `${getAssetOrigin(apiBaseUrl)}${imagePath.startsWith("/") ? imagePath : `/${imagePath}`}`;
 };
 
 export default function CreateCategoryDashboard() {
@@ -37,46 +37,48 @@ export default function CreateCategoryDashboard() {
   const mode = searchParams.get("mode");
   const editSlug = searchParams.get("slug");
   const isUpdate = mode === "update" && !!editSlug;
+
   const [animals, setAnimals] = useState([]);
   const [animalName, setAnimalName] = useState("");
   const [name, setName] = useState("");
-  const [image, setImage] = useState("");
+  const [existingImage, setExistingImage] = useState("");
+  const [imageFile, setImageFile] = useState(null);
   const [loading, setLoading] = useState(false);
+
+  const imagePreview = useMemo(() => {
+    if (!imageFile) return "";
+    return URL.createObjectURL(imageFile);
+  }, [imageFile]);
+
+  useEffect(() => {
+    return () => {
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    };
+  }, [imagePreview]);
 
   useEffect(() => {
     const loadFormData = async () => {
       try {
-        const [animalsResponse, categoriesResponse] = await Promise.all([
-          fetchWithTimeout(`${apiBaseUrl}/animals/get-animals?includeInactive=true`, {
-            cache: "no-store",
-          }),
-          isUpdate
-            ? fetchWithTimeout(`${apiBaseUrl}/categories/get-categories?includeInactive=true`, {
-                cache: "no-store",
-              })
-            : Promise.resolve(null),
-        ]);
-
-        const animalsData = await animalsResponse.json();
-        if (!animalsResponse.ok || !animalsData.success) {
-          throw new Error(animalsData.message || "Failed to load animals");
-        }
+        const animalsData = await adminApi("/animals/get-animals?includeInactive=true", {
+          cache: "no-store",
+        });
         setAnimals(animalsData.animals || []);
 
-        if (isUpdate && categoriesResponse) {
-          const categoriesData = await categoriesResponse.json();
-          if (!categoriesResponse.ok || !categoriesData.success) {
-            throw new Error(categoriesData.message || "Failed to load category details");
-          }
-          const found = (categoriesData.categories || []).find(
-            (item) => item.slug === editSlug
-          );
+        if (isUpdate) {
+          const categoriesData = await adminApi("/categories/get-categories?includeInactive=true", {
+            cache: "no-store",
+          });
+
+          const found = (categoriesData.categories || []).find((item) => item.slug === editSlug);
           if (!found) {
             throw new Error("Category not found");
           }
+
           setName(found.name || "");
           setAnimalName(found.animalName || "");
-          setImage(found.image || "");
+          setExistingImage(found.image || "");
         }
       } catch (error) {
         showToast({
@@ -85,10 +87,13 @@ export default function CreateCategoryDashboard() {
         });
       }
     };
-    loadFormData();
-  }, [isUpdate, editSlug]);
 
-  const handleCreateCategory = async () => {
+    loadFormData();
+  }, [apiBaseUrl, editSlug, isUpdate, showToast]);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
     if (!name.trim() || !animalName.trim()) {
       showToast({
         tone: "danger",
@@ -99,26 +104,23 @@ export default function CreateCategoryDashboard() {
 
     setLoading(true);
     try {
-      const response = await fetchWithTimeout(
+      const formData = new FormData();
+      formData.append("name", name.trim());
+      formData.append("animalName", animalName.trim());
+      if (imageFile) {
+        formData.append("image", imageFile);
+      }
+
+      await adminApi(
         isUpdate
-          ? `${apiBaseUrl}/categories/update-category/${encodeURIComponent(editSlug)}`
-          : `${apiBaseUrl}/categories/create-category`,
+          ? `/categories/update-category/${encodeURIComponent(editSlug)}`
+          : "/categories/create-category",
         {
           method: isUpdate ? "PATCH" : "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: name.trim(),
-            animalName: animalName.trim(),
-            image: image.trim() || null,
-          }),
+          body: formData,
         }
       );
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(
-          data.message || `Failed to ${isUpdate ? "update" : "create"} category`
-        );
-      }
+
       showToast({
         tone: "success",
         title: `Category ${isUpdate ? "updated" : "created"} successfully.`,
@@ -135,6 +137,7 @@ export default function CreateCategoryDashboard() {
   };
 
   const title = isUpdate ? "Update Category" : "Create Category";
+  const shownImage = imagePreview || resolveImageUrl(apiBaseUrl, existingImage);
 
   return (
     <DashboardShell activeItem="Categories">
@@ -188,9 +191,6 @@ export default function CreateCategoryDashboard() {
                 Category name
               </label>
               <input
-                name="name"
-                value={form.name}
-                onChange={handleChange}
                 type="text"
                 placeholder="Premium Dog Food"
                 value={name}
@@ -201,46 +201,51 @@ export default function CreateCategoryDashboard() {
 
             <div>
               <label className="block text-xs font-black uppercase tracking-wide text-main/80">
-                Category icon
+                Category image
               </label>
-              <div className="mt-1.5 flex items-center gap-3">
-                <button
-                  type="button"
-                  className="h-9 rounded-xl bg-main px-3 text-xs font-black text-white transition hover:bg-mainHover"
-                >
-                  Choose file
-                </button>
-                <span className="text-sm font-semibold text-slate-400">
-                  {image ? "Image URL ready" : "No file chosen"}
-                </span>
-              </div>
-              <input
-                type="url"
-                placeholder="Optional image URL"
-                value={image}
-                onChange={(event) => setImage(event.target.value)}
-                className="mt-2 h-10 w-full rounded-xl border border-neutral-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none placeholder:text-slate-300 focus:border-main"
-              />
+              <label className="mt-1.5 flex min-h-28 cursor-pointer items-center justify-center rounded-xl border border-dashed border-main/25 bg-mainSoft/30 px-4 text-center text-sm font-semibold text-slate-600 transition hover:border-main/45 hover:bg-mainSoft/50">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(event) => setImageFile(event.target.files?.[0] || null)}
+                  className="sr-only"
+                />
+                {shownImage ? (
+                  <span className="flex items-center gap-3">
+                    <span className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-white shadow-sm">
+                      <Image
+                        src={shownImage}
+                        alt="Category preview"
+                        width={64}
+                        height={64}
+                        className="h-full w-full object-cover"
+                      />
+                    </span>
+                    <span className="text-left">
+                      <span className="block font-black text-main">
+                        {imageFile ? imageFile.name : "Current image"}
+                      </span>
+                      <span className="block text-xs text-slate-500">
+                        Click to replace the category image
+                      </span>
+                    </span>
+                  </span>
+                ) : (
+                  <span>
+                    <span className="block font-black text-main">Upload category image</span>
+                    <span className="block text-xs text-slate-500">PNG, JPG, WEBP</span>
+                  </span>
+                )}
+              </label>
             </div>
-
-            <label className="inline-flex items-center gap-2 pt-1 text-sm font-semibold text-slate-600">
-              <input
-                name="isActive"
-                type="checkbox"
-                checked={form.isActive}
-                onChange={handleChange}
-                className="h-4 w-4 accent-[#173F31]"
-              />
-              Category is active
-            </label>
 
             <div className="flex flex-wrap items-center gap-3 pt-2">
               <button
                 type="submit"
-                disabled={saving}
+                disabled={loading}
                 className="h-10 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {saving ? "Saving..." : "Create Category"}
+                {loading ? (isUpdate ? "Updating..." : "Creating...") : title}
               </button>
               <Link
                 href="/dashboard/categories"
@@ -262,7 +267,7 @@ export default function CreateCategoryDashboard() {
                 <button
                   key={item}
                   type="button"
-                  onClick={() => setForm((prev) => ({ ...prev, name: item }))}
+                  onClick={() => setName(item)}
                   className="rounded-full border border-main/20 bg-mainSoft/60 px-3 py-1.5 text-xs font-black text-main transition hover:bg-mainSoft"
                 >
                   {item}
@@ -278,27 +283,8 @@ export default function CreateCategoryDashboard() {
             <ul className="mt-3 space-y-2 text-sm font-semibold leading-6 text-slate-500">
               <li>Each category belongs to one animal only.</li>
               <li>The slug updates automatically from the name when saved.</li>
-              <li>Use a short icon label or code for the preview tile.</li>
+              <li>The uploaded image will appear in the storefront.</li>
             </ul>
-          </div>
-
-          <div className="rounded-[24px] border border-neutral-200 bg-white p-4 shadow-lg shadow-main/5">
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                disabled={loading}
-                onClick={handleCreateCategory}
-                className="h-10 rounded-xl bg-main px-4 text-sm font-black text-white transition hover:bg-mainHover"
-              >
-                {loading ? (isUpdate ? "Updating..." : "Creating...") : title}
-              </button>
-              <Link
-                href="/dashboard/categories"
-                className="text-sm font-black text-slate-500 transition hover:text-main"
-              >
-                Cancel
-              </Link>
-            </div>
           </div>
         </div>
       </div>

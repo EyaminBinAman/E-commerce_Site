@@ -1,7 +1,5 @@
-import { API_BASE_URL, adminApi } from "@/lib/adminApi";
+import { adminApi } from "@/lib/adminApi";
 import { getApiBaseUrl } from "@/lib/apiBaseUrl";
-
-const REQUEST_TIMEOUT_MS = 12000;
 
 export const bannerTypeOptions = [
   ["hero-banner", "Hero banner"],
@@ -26,29 +24,11 @@ export const getBannerImageUrl = (imageUrl) => {
   return `${getAssetOrigin()}${imageUrl.startsWith("/") ? imageUrl : `/${imageUrl}`}`;
 };
 
-const fetchWithTimeout = async (url, options = {}) => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-};
-
 export async function adminApiForm(path, formData, options = {}) {
-  const response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
-    credentials: "include",
+  return adminApi(path, {
     method: options.method || "POST",
     body: formData,
   });
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    throw new Error(data.message || "Request failed");
-  }
-
-  return data;
 }
 
 export async function getBannersFromApi({ includeInactive = true } = {}) {

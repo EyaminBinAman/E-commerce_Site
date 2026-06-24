@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useAdminAuth } from "@/components/AuthGate";
 import LogoutButton from "@/components/LogoutButton";
 import BrandLogo from "@/components/BrandLogo";
@@ -298,15 +299,40 @@ function Sidebar({ activeItem }) {
   );
 }
 
-function Topbar() {
-  const { admin } = useAdminAuth();
-  const adminName = admin?.name || admin?.email?.split("@")[0] || "Admin";
-  const adminInitials = adminName
+function getAdminInitials(admin) {
+  const name = admin?.name || admin?.email?.split("@")[0] || "Admin";
+
+  return name
     .split(/\s+/)
     .map((part) => part[0])
-    .join("")
+    .filter(Boolean)
     .slice(0, 2)
+    .join("")
     .toUpperCase();
+}
+
+function Topbar() {
+  const { admin } = useAdminAuth();
+  const adminInitials = getAdminInitials(admin);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [search, setSearch] = useState(searchParams.get("search") || "");
+
+  useEffect(() => {
+    setSearch(searchParams.get("search") || "");
+  }, [searchParams]);
+
+  const handleSearch = (event) => {
+    event.preventDefault();
+    const query = search.trim();
+
+    if (!query) {
+      router.push("/dashboard/search");
+      return;
+    }
+
+    router.push(`/dashboard/search?search=${encodeURIComponent(query)}`);
+  };
 
   return (
     <header className="sticky top-0 z-20 flex h-20 items-center justify-between border-b border-neutral-200 bg-mainSoft/60 px-3 backdrop-blur md:px-6 lg:px-8">
@@ -314,28 +340,37 @@ function Topbar() {
         <BrandLogo size="sm" />
       </div>
 
-      <div className="mx-auto hidden w-full max-w-2xl items-center rounded-xl border border-neutral-200 bg-white px-4 py-3 text-slate-400 shadow-sm md:flex">
+      <form
+        onSubmit={handleSearch}
+        className="mx-auto hidden w-full max-w-2xl items-center rounded-xl border border-neutral-200 bg-white px-4 py-3 text-slate-400 shadow-sm transition focus-within:border-main md:flex"
+      >
         <Icon name="search" className="h-5 w-5" />
-        <span className="ml-4 text-sm font-bold">Search Orders, Products, Customers...</span>
-      </div>
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search Orders, Products, Customers..."
+          className="ml-4 w-full bg-transparent text-sm font-bold text-slate-700 outline-none placeholder:text-slate-400"
+        />
+      </form>
 
       <div className="flex items-center gap-3">
         <button type="button" aria-label="Notifications" className="relative flex h-12 w-12 items-center justify-center rounded-2xl border border-neutral-200 bg-white text-main shadow-sm">
           <Icon name="bell" className="h-5 w-5" />
           <span className="absolute right-2 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-[10px] font-black text-white">1</span>
         </button>
-        <Link
-          href="/dashboard/profile"
-          className="flex h-14 items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-3 shadow-sm transition hover:bg-mainSoft/60"
-        >
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-main font-black text-white">
-            {adminInitials || "A"}
-          </div>
-          <div className="hidden pr-1 sm:block">
-            <p className="text-sm font-black text-main">{adminName}</p>
-            <p className="text-xs font-bold text-slate-400">Profile</p>
-          </div>
-        </Link>
+        <div className="flex h-12 overflow-hidden rounded-2xl border border-neutral-200 bg-white text-main shadow-sm transition-colors duration-300 hover:border-main">
+          <Link
+            href="/dashboard/profile"
+            className="flex items-center gap-2 px-4 text-sm font-semibold transition-colors duration-300 hover:bg-main hover:text-white"
+          >
+            <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-accent text-xs font-extrabold text-main">
+              {adminInitials || "A"}
+            </span>
+            <span>Profile</span>
+          </Link>
+          <LogoutButton variant="icon" />
+        </div>
       </div>
     </header>
   );

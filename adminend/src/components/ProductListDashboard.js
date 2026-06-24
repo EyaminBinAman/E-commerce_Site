@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import DashboardShell, { Badge, Icon } from "@/components/DashboardShell";
@@ -59,10 +60,16 @@ function normalizeProduct(product) {
 
 export default function ProductListDashboard() {
   const { showToast, confirm } = useToast();
+  const searchParams = useSearchParams();
   const [products, setProducts] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(searchParams.get("search") || "");
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setSearch(searchParams.get("search") || "");
+    setCurrentPage(1);
+  }, [searchParams]);
 
   useEffect(() => {
     let alive = true;

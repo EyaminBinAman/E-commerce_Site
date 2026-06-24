@@ -18,7 +18,14 @@ const ORDER_STATUSES = [
   "Cancelled",
 ];
 
-const CREATE_ORDER_FIELDS = ["items", "promoCode", "paymentMethod", "shippingAddress"];
+const DELIVERY_ZONES = ["inside-dhaka", "outside-dhaka"];
+const CREATE_ORDER_FIELDS = [
+  "items",
+  "promoCode",
+  "paymentMethod",
+  "shippingAddress",
+  "deliveryZone",
+];
 const CREATE_ORDER_ITEM_FIELDS = ["productId", "variantId", "quantity"];
 const UPDATE_ORDER_FIELDS = [
   "shippingAddress",
@@ -321,7 +328,7 @@ const validateCreateOrder = (req, res, next) => {
     return fail(res, `${unknownField} is not allowed when creating an order`);
   }
 
-  const { items, promoCode, paymentMethod, shippingAddress } = req.body;
+  const { items, promoCode, paymentMethod, shippingAddress, deliveryZone } = req.body;
   const cleanItems = validateOrderItems(items);
 
   if (cleanItems.error) {
@@ -346,10 +353,15 @@ const validateCreateOrder = (req, res, next) => {
     return fail(res, cleanPromoCode.error);
   }
 
+  if (!DELIVERY_ZONES.includes(deliveryZone)) {
+    return fail(res, "Valid delivery zone is required");
+  }
+
   req.validatedOrder = {
     items: cleanItems.value,
     paymentMethod: cleanPaymentMethod.value,
     shippingAddress: cleanShippingAddress.value,
+    deliveryZone,
     ...(isProvided(cleanPromoCode.value) ? { promoCode: cleanPromoCode.value } : {}),
   };
 

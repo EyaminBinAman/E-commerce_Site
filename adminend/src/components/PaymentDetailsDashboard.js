@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import DashboardShell, { Badge, Icon } from "@/components/DashboardShell";
@@ -70,10 +71,15 @@ function statusTone(status) {
 
 export default function PaymentDetailsDashboard() {
   const { showToast } = useToast();
+  const searchParams = useSearchParams();
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchText, setSearchText] = useState("");
+  const [searchText, setSearchText] = useState(searchParams.get("search") || "");
   const [updatingId, setUpdatingId] = useState("");
+
+  useEffect(() => {
+    setSearchText(searchParams.get("search") || "");
+  }, [searchParams]);
 
   useEffect(() => {
     async function loadPayments() {

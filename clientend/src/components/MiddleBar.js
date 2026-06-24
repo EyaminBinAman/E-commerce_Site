@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -18,8 +18,8 @@ import ForgotPasswordPopover from "@/components/ForgotPasswordPopover";
 import LoginPopover from "@/components/LoginPopover";
 import { useWishlist } from "@/components/WishlistProvider";
 import { useAuth } from "@/context/AuthContext";
-import { API_BASE_URL } from "@/lib/api";
-import { getInitials } from "@/lib/profileMock";
+import { API_BASE_URL, apiRequest } from "@/lib/api";
+import { getInitials } from "@/lib/profileUtils";
 
 const secondaryActions = [
   { id: "wishlist", label: "Wishlist", icon: HiOutlineHeart, href: "/wishlist" },
@@ -42,6 +42,10 @@ export default function MiddleBar() {
   const [isForgotOpen, setIsForgotOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [notice, setNotice] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [suggestions, setSuggestions] = useState([]);
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -63,6 +67,71 @@ export default function MiddleBar() {
   const showNotice = (message) => {
     setNotice(message);
     window.setTimeout(() => setNotice(""), 3000);
+  };
+
+  const handleSearch = (event) => {
+    event.preventDefault();
+    const query = searchQuery.trim();
+    setIsSearchFocused(false);
+
+    if (!query) {
+      router.push("/categories");
+      return;
+    }
+
+    router.push(`/search?q=${encodeURIComponent(query)}`);
+  };
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    let active = true;
+
+    if (query.length < 2) {
+      setSuggestions([]);
+      setIsSuggesting(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    setIsSuggesting(true);
+    const timer = window.setTimeout(() => {
+      const params = new URLSearchParams({
+        search: query,
+        isActive: "true",
+        limit: "6",
+        page: "1",
+      });
+
+      apiRequest(`/products/get-products?${params}`)
+        .then((data) => {
+          if (!active) return;
+          setSuggestions(data.products || []);
+        })
+        .catch(() => {
+          if (!active) return;
+          setSuggestions([]);
+        })
+        .finally(() => {
+          if (active) {
+            setIsSuggesting(false);
+          }
+        });
+    }, 220);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [searchQuery]);
+
+  const showSuggestions =
+    isSearchFocused && searchQuery.trim().length >= 2 && (suggestions.length > 0 || isSuggesting);
+
+  const handleSuggestionSelect = (product) => {
+    setSearchQuery(product.name || "");
+    setIsSearchFocused(false);
+    router.push(product.slug ? `/product/${product.slug}` : `/search?q=${encodeURIComponent(product.name || "")}`);
   };
 
   return (
@@ -95,10 +164,18 @@ export default function MiddleBar() {
             </Link>
 
             <div className="flex flex-1 flex-col gap-4 lg:mx-8 lg:max-w-4xl lg:flex-row lg:items-center">
-              <form className="group flex flex-1 items-center rounded-full border border-neutral-200 bg-white pl-5 shadow-[0_8px_30px_rgba(23,63,49,0.08)] transition-all duration-300 focus-within:border-main">
+              <form
+                onSubmit={handleSearch}
+                className="group relative flex flex-1 items-center rounded-full border border-neutral-200 bg-white pl-5 shadow-[0_8px_30px_rgba(23,63,49,0.08)] transition-all duration-300 focus-within:border-main"
+              >
                 <input
-                  type="text"
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  onFocus={() => setIsSearchFocused(true)}
+                  onBlur={() => window.setTimeout(() => setIsSearchFocused(false), 120)}
                   placeholder="Search food, toys, litter, fish care, flea treatment..."
+                  autoComplete="off"
                   className="h-14 flex-1 bg-transparent text-[15px] text-neutral-700 outline-none placeholder:text-neutral-400"
                 />
                 <button
@@ -107,6 +184,51 @@ export default function MiddleBar() {
                 >
                   <HiOutlineMagnifyingGlass className="text-lg" />
                 </button>
+                {showSuggestions ? (
+                  <div className="absolute left-0 right-0 top-[calc(100%+0.6rem)] z-50 overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-[0_18px_45px_rgba(23,63,49,0.14)]">
+                    {isSuggesting ? (
+                      <p className="px-4 py-4 text-sm font-bold text-main/60">
+                        Searching...
+                      </p>
+                    ) : (
+                      suggestions.map((product) => {
+                        const image = getImageUrl(product.images?.[0] || product.image);
+
+                        return (
+                          <button
+                            key={product._id || product.slug}
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => handleSuggestionSelect(product)}
+                            className="flex w-full items-center gap-3 border-b border-neutral-100 px-4 py-3 text-left transition hover:bg-mainSoft/45 last:border-b-0"
+                          >
+                            <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-mainSoft text-lg">
+                              {image ? (
+                                <img
+                                  src={image}
+                                  alt={product.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                "🐾"
+                              )}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-black text-main">
+                                {product.name}
+                              </span>
+                              <span className="mt-0.5 block truncate text-xs font-semibold text-main/55">
+                                {product.brand?.name || "Product"}
+                                {product.category?.name ? ` · ${product.category.name}` : ""}
+                              </span>
+                            </span>
+                            <span className="text-xs font-black text-accent">View</span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                ) : null}
               </form>
 
               <div className="flex flex-wrap items-center gap-3">

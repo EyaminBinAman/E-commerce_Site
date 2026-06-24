@@ -1,27 +1,9 @@
+import axios from "axios";
+
 import { getApiBaseUrl } from "@/lib/apiBaseUrl";
+import { resolveCatalogImageUrl } from "@/lib/categoryApi";
 
 const FETCH_TIMEOUT_MS = 5000;
-
-const fallbackBrands = [
-  {
-    name: "Orijen",
-    slug: "orijen",
-    description: "Dog and cat nutrition",
-    animalNames: ["Dog", "Cat"],
-  },
-  {
-    name: "Royal Canin",
-    slug: "royal-canin",
-    description: "Breed-focused formulas",
-    animalNames: ["Dog", "Cat"],
-  },
-  {
-    name: "KONG",
-    slug: "kong",
-    description: "Chew and play essentials",
-    animalNames: ["Dog"],
-  },
-];
 
 const titleCase = (value = "") =>
   value
@@ -34,16 +16,10 @@ const titleCase = (value = "") =>
 export async function getBrandsFromApi() {
   try {
     const apiBaseUrl = getApiBaseUrl();
-    const response = await fetch(`${apiBaseUrl}/brands/get-brands`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    const response = await axios.get(`${apiBaseUrl}/brands/get-brands`, {
+      timeout: FETCH_TIMEOUT_MS,
     });
-
-    if (!response.ok) {
-      throw new Error("Failed to load brands");
-    }
-
-    const data = await response.json();
+    const data = response.data;
     if (!data.success) {
       throw new Error(data.message || "Failed to load brands");
     }
@@ -56,10 +32,6 @@ export async function getBrandsFromApi() {
 
 export async function getBrandNavbarView() {
   const brands = await getBrandsFromApi();
-
-  if (!brands.length) {
-    return fallbackBrands;
-  }
 
   const ordered = [...brands].sort(
     (a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)
@@ -79,6 +51,7 @@ export async function getBrandNavbarView() {
           : `${name} products and pet care essentials`,
       animalNames: animals,
       image: brand.image || null,
+      imageUrl: resolveCatalogImageUrl(brand.image),
     };
   });
 }

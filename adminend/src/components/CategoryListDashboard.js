@@ -1,23 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import DashboardShell, { Icon } from "@/components/DashboardShell";
-import { getApiBaseUrl } from "@/lib/apiBaseUrl";
+import { adminApi } from "@/lib/adminApi";
 import { useToast } from "@/components/ui/toast";
-
-const REQUEST_TIMEOUT_MS = 12000;
-
-const fetchWithTimeout = async (url, options = {}) => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    return await fetch(url, { credentials: "include", ...options, signal: controller.signal });
-  } finally {
-    clearTimeout(timeoutId);
-  }
-};
 
 const getApiErrorMessage = (error, fallback) => {
   if (error?.name === "AbortError") {
@@ -68,33 +57,27 @@ function StatusToggle({ on = true, onToggle }) {
 
 export default function CategoryListDashboard() {
   const { showToast, confirm } = useToast();
-  const apiBaseUrl = getApiBaseUrl();
+  const searchParams = useSearchParams();
   const [animalRows, setAnimalRows] = useState([]);
   const [categoryRows, setCategoryRows] = useState([]);
-  const [searchText, setSearchText] = useState("");
+  const [searchText, setSearchText] = useState(searchParams.get("search") || "");
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setSearchText(searchParams.get("search") || "");
+  }, [searchParams]);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const [animalsRes, categoriesRes] = await Promise.all([
-        fetchWithTimeout(`${apiBaseUrl}/animals/get-animals?includeInactive=true`, {
+      const [animalsJson, categoriesJson] = await Promise.all([
+        adminApi("/animals/get-animals?includeInactive=true", {
           cache: "no-store",
         }),
-        fetchWithTimeout(`${apiBaseUrl}/categories/get-categories?includeInactive=true`, {
+        adminApi("/categories/get-categories?includeInactive=true", {
           cache: "no-store",
         }),
       ]);
-
-      const animalsJson = await animalsRes.json();
-      const categoriesJson = await categoriesRes.json();
-
-      if (!animalsRes.ok || !animalsJson.success) {
-        throw new Error(animalsJson.message || "Failed to load animals");
-      }
-      if (!categoriesRes.ok || !categoriesJson.success) {
-        throw new Error(categoriesJson.message || "Failed to load categories");
-      }
 
       setAnimalRows(
         (animalsJson.animals || []).map((item) => ({
@@ -162,18 +145,10 @@ export default function CategoryListDashboard() {
 
   const toggleAnimalStatus = async (id, nextValue) => {
     try {
-      const response = await fetchWithTimeout(
-        `${apiBaseUrl}/animals/active-on-off-animals/${id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ isActive: nextValue }),
-        }
-      );
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || "Failed to toggle animal status");
-      }
+      await adminApi(`/animals/active-on-off-animals/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive: nextValue }),
+      });
 
       setAnimalRows((prev) =>
         prev.map((item) => (item.id === id ? { ...item, active: nextValue } : item))
@@ -189,18 +164,10 @@ export default function CategoryListDashboard() {
 
   const toggleCategoryStatus = async (slug, nextValue) => {
     try {
-      const response = await fetchWithTimeout(
-        `${apiBaseUrl}/categories/active-on-off-animals/${encodeURIComponent(slug)}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ isActive: nextValue }),
-        }
-      );
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || "Failed to toggle category status");
-      }
+      await adminApi(`/categories/active-on-off-animals/${encodeURIComponent(slug)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isActive: nextValue }),
+      });
 
       setCategoryRows((prev) =>
         prev.map((item) =>
@@ -239,16 +206,9 @@ export default function CategoryListDashboard() {
       tone: "danger",
       onConfirm: async () => {
         try {
-          const response = await fetchWithTimeout(
-            `${apiBaseUrl}/animals/delete-animals/${id}`,
-            {
+          await adminApi(`/animals/delete-animals/${id}`, {
             method: "DELETE",
-            }
-          );
-          const data = await response.json();
-          if (!response.ok || !data.success) {
-            throw new Error(data.message || "Failed to delete animal");
-          }
+          });
           setAnimalRows((prev) => prev.filter((item) => item.id !== id));
           showToast({ tone: "success", title: `${name} deleted.` });
         } catch (error) {
@@ -271,15 +231,10 @@ export default function CategoryListDashboard() {
       tone: "danger",
       onConfirm: async () => {
         try {
-          const response = await fetchWithTimeout(
-            `${apiBaseUrl}/categories/delete-category/${encodeURIComponent(slug)}`,
-            { method: "DELETE" }
-          );
-          const data = await response.json();
-          if (!response.ok || !data.success) {
-            throw new Error(data.message || "Failed to delete category");
-          }
-          setCategoryRows((prev) => prev.filter((item) => item.slug !== slug));
+          await adminApi(`/categories/delete-category/${encodeURIComponent(category.slug)}`, {
+            method: "DELETE",
+          });
+          setCategoryRows((prev) => prev.filter((item) => item.slug !== category.slug));
           showToast({ tone: "success", title: "Category deleted." });
         } catch (error) {
           showToast({
